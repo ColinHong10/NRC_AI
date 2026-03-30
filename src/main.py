@@ -170,7 +170,7 @@ def run_batch_simulation(games=50, simulations=100, use_experience=True):
     return results
 
 
-def run_learning_experiment(games=100, simulations=100):
+def run_learning_experiment(games=100, simulations=50):
     """
     经验学习实验：
     分4阶段，每阶段25场，观察学习效果
@@ -197,7 +197,8 @@ def run_learning_experiment(games=100, simulations=100):
         rounds_list = []
         t0 = time.time()
 
-        for _ in range(n_games):
+        print(f"  >> {phase_name}", flush=True)
+        for g_i in range(n_games):
             winner, rnd, _ = run_single_battle(
                 simulations=simulations, verbose=False, use_experience=True
             )
@@ -206,6 +207,9 @@ def run_learning_experiment(games=100, simulations=100):
             elif winner == "b":
                 b_w += 1
             rounds_list.append(rnd)
+            tag = "A" if winner == "a" else "B" if winner == "b" else "?"
+            print(f"[{g_i+1}/{n_games}]{tag}({rnd}r)", end=" ", flush=True)
+        print(flush=True)
 
         dt = time.time() - t0
         total = a_w + b_w
@@ -260,7 +264,7 @@ def run_player_vs_ai(simulations=200):
             usable = "✓" if pa.energy >= s.energy_cost else "✗能量不足"
             effects = _skill_effects(s)
             print(f"    {i+1}. {s.name} | 威力:{s.power} 能耗:{s.energy_cost} 类型:{s.skill_type.value}/{s.category.value} {usable}  {effects}", flush=True)
-        print(f"    0. 汇合聚能 (回复3能量)", flush=True)
+        print(f"    0. 汇合聚能 (回复5能量)", flush=True)
         # 可换人
         switchable = []
         for i, p in enumerate(state.team_a):
@@ -462,7 +466,7 @@ def main_menu():
         elif choice == "2":
             run_batch_simulation(games=50, simulations=100)
         elif choice == "3":
-            run_learning_experiment(games=100, simulations=100)
+            run_learning_experiment(games=100, simulations=50)
         elif choice == "4":
             run_batch_simulation(games=10, simulations=50, use_experience=False)
         elif choice == "5":

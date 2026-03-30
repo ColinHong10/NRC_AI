@@ -10,3 +10,5 @@ build/
 .venv/
 venv/
 *.log
+.DS_Store
+**/.DS_Store

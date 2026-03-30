@@ -223,7 +223,7 @@ class Pokemon:
     skills: List[Skill] = field(default_factory=list)
 
     current_hp: int = 0
-    energy: int = 5
+    energy: int = 10  # 登场时满能量，上限10
     status: StatusType = StatusType.NORMAL
 
     # 百分比属性修正器 (1.0 = +100%, -0.5 = -50%)
@@ -256,6 +256,10 @@ class Pokemon:
         if self.status in (StatusType.SLEEP, StatusType.FROZEN):
             return False
         return True
+
+    def gain_energy(self, amount: int) -> None:
+        """增加能量，不超过上限10"""
+        self.energy = min(10, self.energy + amount)
 
     def effective_atk(self) -> float:
         return self.attack * max(0.1, 1.0 + self.atk_mod)

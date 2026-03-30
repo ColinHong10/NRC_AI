@@ -73,9 +73,9 @@ def apply_skill(attacker: Pokemon, defender: Pokemon, skill: Skill,
 
     # --- 回复/偷取能量 ---
     if skill.self_heal_energy > 0:
-        attacker.energy += skill.self_heal_energy
+        attacker.gain_energy(skill.self_heal_energy)
     if skill.steal_energy > 0:
-        attacker.energy += skill.steal_energy
+        attacker.gain_energy(skill.steal_energy)
         defender.energy = max(0, defender.energy - skill.steal_energy)
     if skill.enemy_lose_energy > 0:
         defender.energy = max(0, defender.energy - skill.enemy_lose_energy)
@@ -219,7 +219,7 @@ def apply_action(state: BattleState, team: str, action: Action) -> Optional[str]
         return f"换人->{team_list[action[1]].name}"
 
     if action[0] == -1:
-        current.energy += 5
+        current.gain_energy(5)
         return "汇合聚能"
 
     skill = current.skills[action[0]]
@@ -250,16 +250,15 @@ def apply_action(state: BattleState, team: str, action: Action) -> Optional[str]
 
 
 def auto_switch(state: BattleState) -> None:
-    while state.team_a[state.current_a].is_fainted:
+    """自动换人：如果当前精灵倒下，切换到第一个存活精灵"""
+    if state.team_a[state.current_a].is_fainted:
         alive = [i for i, p in enumerate(state.team_a) if not p.is_fainted]
-        if not alive:
-            break
-        state.current_a = alive[0]
-    while state.team_b[state.current_b].is_fainted:
+        if alive:
+            state.current_a = alive[0]
+    if state.team_b[state.current_b].is_fainted:
         alive = [i for i, p in enumerate(state.team_b) if not p.is_fainted]
-        if not alive:
-            break
-        state.current_b = alive[0]
+        if alive:
+            state.current_b = alive[0]
 
 
 def turn_end_effects(state: BattleState) -> None:
@@ -370,12 +369,12 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
 
     # 汇合聚能
     if action[0] == -1:
-        current.energy += 5
+        current.gain_energy(5)
         return
 
     skill = current.skills[action[0]]
     if current.energy < skill.energy_cost:
-        current.energy += 5  # 能量不够时视为汇合聚能
+        current.gain_energy(5)  # 能量不够时视为汇合聚能
         return
     current.energy -= skill.energy_cost
 
@@ -387,8 +386,7 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
                 state.current_a = new_idx
             else:
                 state.current_b = new_idx
-            current = team_list[new_idx if team == "a" else idx]
-        # 脱离后不执行攻击
+        return  # 脱离后不再执行后续效果
 
     # 获取对方技能(用于应对判定)
     enemy_skill = None
@@ -402,7 +400,7 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
             heal = int(current.hp * skill.self_heal_hp)
             current.current_hp = min(current.hp, current.current_hp + heal)
         if skill.self_heal_energy > 0:
-            current.energy += skill.self_heal_energy
+            current.gain_energy(skill.self_heal_energy)
         return
 
     # 状态技能：应用效果
@@ -413,9 +411,9 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
             heal = int(current.hp * skill.self_heal_hp)
             current.current_hp = min(current.hp, current.current_hp + heal)
         if skill.self_heal_energy > 0:
-            current.energy += skill.self_heal_energy
+            current.gain_energy(skill.self_heal_energy)
         if skill.steal_energy > 0:
-            current.energy += skill.steal_energy
+            current.gain_energy(skill.steal_energy)
             enemy.energy = max(0, enemy.energy - skill.steal_energy)
         if skill.enemy_lose_energy > 0:
             enemy.energy = max(0, enemy.energy - skill.enemy_lose_energy)
@@ -435,8 +433,35 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
                     state.current_b = new_idx
         return
 
-    # 攻击技能：计算伤害
+    # 攻击技能：先应用 buff/debuff 效果
+    current.apply_self_buff(skill)
+    enemy.apply_enemy_debuff(skill)
+
+    # 状态附加（攻击技能也可能附带中毒等效果）
+    if skill.poison_stacks > 0:
+        enemy.poison_stacks += skill.poison_stacks
+    if skill.burn_stacks > 0:
+        enemy.burn_stacks += skill.burn_stacks
+    if skill.freeze_stacks > 0:
+        enemy.freeze_stacks += skill.freeze_stacks
+        if enemy.freeze_stacks >= 3:
+            enemy.status = StatusType.FROZEN
+
+    # 能量效果
+    if skill.steal_energy > 0:
+        current.gain_energy(skill.steal_energy)
+        enemy.energy = max(0, enemy.energy - skill.steal_energy)
+    if skill.enemy_lose_energy > 0:
+        enemy.energy = max(0, enemy.energy - skill.enemy_lose_energy)
+
+    # 计算伤害
     if skill.power <= 0 or enemy.is_fainted:
+        # 无威力攻击技能仍然应用了上面的效果，但不造成伤害
+        if skill.self_heal_hp > 0:
+            heal = int(current.hp * skill.self_heal_hp)
+            current.current_hp = min(current.hp, current.current_hp + heal)
+        if skill.self_heal_energy > 0:
+            current.gain_energy(skill.self_heal_energy)
         return
 
     damage = DamageCalculator.calculate(current, enemy, skill)
@@ -460,7 +485,7 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
         heal = int(current.hp * skill.self_heal_hp)
         current.current_hp = min(current.hp, current.current_hp + heal)
     if skill.self_heal_energy > 0:
-        current.energy += skill.self_heal_energy
+        current.gain_energy(skill.self_heal_energy)
 
 
 def get_priority(state: BattleState, team: str, action: Action) -> float:
