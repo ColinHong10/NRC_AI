@@ -134,9 +134,59 @@ def test_cleanse_can_remove_buffs_and_debuffs():
     assert enemy.def_mod == 0.0
 
 
+def test_skill_mod_priority_affects_turn_order():
+    priority_buff = make_skill(
+        "priority_up",
+        effects=[EffectTag(E.SKILL_MOD, {"target": "self", "stat": "priority", "value": 1})],
+    )
+    strike = make_skill(
+        "strike",
+        power=220,
+        skill_type=Type.NORMAL,
+        category=SkillCategory.PHYSICAL,
+        effects=[EffectTag(E.DAMAGE)],
+    )
+    user = make_pokemon("user", speed=50, attack=140, skills=[priority_buff, strike])
+    enemy = make_pokemon("enemy", hp=180, defense=70, speed=200, attack=140, skills=[strike])
+    state = BattleState(team_a=[user], team_b=[enemy])
+
+    execute_full_turn(state, (0,), (0,))
+    user_hp_before = user.current_hp
+    execute_full_turn(state, (1,), (0,))
+
+    assert enemy.is_fainted
+    assert user.current_hp == user_hp_before
+
+
+def test_skill_mod_cost_changes_actual_energy_consumption():
+    discount = make_skill(
+        "discount",
+        effects=[EffectTag(E.SKILL_MOD, {"target": "self", "stat": "cost", "value": -1})],
+    )
+    big_hit = make_skill(
+        "big_hit",
+        power=80,
+        energy=3,
+        category=SkillCategory.PHYSICAL,
+        effects=[EffectTag(E.DAMAGE)],
+    )
+    user = make_pokemon("user", attack=150, skills=[discount, big_hit])
+    user.energy = 2
+    enemy = make_pokemon("enemy", hp=320, defense=90, skills=[make_skill("wait")])
+    state = BattleState(team_a=[user], team_b=[enemy])
+
+    execute_full_turn(state, (0,), (-1,))
+    execute_full_turn(state, (1,), (-1,))
+
+    assert enemy.current_hp < enemy.hp
+    assert user.energy == 0
+
+
 if __name__ == "__main__":
     test_skill_life_drain_heals_after_damage()
     test_grant_life_drain_applies_to_later_attacks()
     test_next_attack_mod_is_consumed_once()
     test_cleanse_can_remove_buffs_and_debuffs()
+    test_skill_mod_priority_affects_turn_order()
+    test_skill_mod_cost_changes_actual_energy_consumption()
     print("PASS: generic effect-engine regressions")

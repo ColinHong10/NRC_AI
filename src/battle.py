@@ -30,7 +30,8 @@ class DamageCalculator:
 
     @staticmethod
     def calculate(attacker: Pokemon, defender: Pokemon, skill: Skill,
-                  power_override: int = 0, weather: str = None) -> int:
+                  power_override: int = 0, weather: str = None,
+                  hit_count_override: int = 0) -> int:
         power = power_override or skill.power
         if power <= 0:
             return 0
@@ -62,7 +63,7 @@ class DamageCalculator:
             weather_mult = wm.get(skill_type_val, 1.0)
 
         # 连击
-        hits = skill.hit_count
+        hits = hit_count_override or skill.hit_count
 
         damage = base * eff * stab * weather_mult * hits
         return max(1, int(damage))
@@ -460,7 +461,7 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
             current.charging_skill_idx = -1
 
     # 计算实际能耗（含动态减免，如毒液渗透）
-    actual_cost = skill.energy_cost
+    actual_cost = max(0, skill.energy_cost + getattr(current, "skill_cost_mod", 0))
     for tag in getattr(skill, "effects", []):
         if tag.type == E.ENERGY_COST_DYNAMIC:
             per = tag.params.get("per", "")
@@ -727,8 +728,9 @@ def get_priority(state: BattleState, team: str, action: Action) -> int:
     idx = state.current_a if team == "a" else state.current_b
     if action[0] >= len(team_list[idx].skills):
         return 0
-    skill = team_list[idx].skills[action[0]]
-    return skill.priority_mod
+    pokemon = team_list[idx]
+    skill = pokemon.skills[action[0]]
+    return skill.priority_mod + getattr(pokemon, "priority_stage", 0)
 
 
 def check_winner(state: BattleState) -> Optional[str]:
