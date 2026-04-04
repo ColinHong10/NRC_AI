@@ -22,6 +22,7 @@ class E(Enum):
     STEAL_ENERGY = auto()            # 偷取能量      params: {"amount": 1}
     ENEMY_LOSE_ENERGY = auto()       # 敌方失去能量  params: {"amount": 1}
     LIFE_DRAIN = auto()              # 吸血          params: {"pct": 0.5} = 伤害的50%
+    GRANT_LIFE_DRAIN = auto()        # 获得持续吸血  params: {"pct": 0.5}
 
     # ── 属性修改 ──
     SELF_BUFF = auto()               # 自身增益  params: {"atk":1.0, "spatk":0.7, "speed":80}
@@ -54,6 +55,9 @@ class E(Enum):
     PERMANENT_MOD = auto()           # 永久修改   params: {"target":"cost","delta":-6} 或
                                      #                    {"target":"power","delta":90}
                                      #   条件: 直接生效 / per_counter / per_position_change
+    SKILL_MOD = auto()               # 技能维度修正 params: {"target":"self","stat":"power_pct","value":0.4}
+    NEXT_ATTACK_MOD = auto()         # 下一次攻击修正 params: {"power_bonus":70} / {"power_pct":1.0}
+    CLEANSE = auto()                 # 清除增减益/状态 params: {"target":"self","mode":"buffs|debuffs|all"}
 
     # ── 位置 / 传动 ──
     POSITION_BUFF = auto()           # 位置增益  params: {"positions":[0,2],"buff":{"atk":1.0}}
@@ -68,6 +72,8 @@ class E(Enum):
     DISPEL_MARKS = auto()            # 驱散双方印记  params: {"condition":"not_blocked"}
     CONDITIONAL_BUFF = auto()        # 条件增益  params: {"condition":"enemy_switch","buff":{"speed":70}}
                                      #   或 {"condition":"per_enemy_poison","buff":{"spatk":0.3}}
+    DISPEL_BUFFS = auto()            # 驱散增益  params: {"target":"enemy"|"self"}
+    DISPEL_DEBUFFS = auto()          # 驱散减益  params: {"target":"enemy"|"self"}
 
     # ── 应对容器 (子效果) ──
     COUNTER_ATTACK = auto()          # 应对攻击  sub_effects=[...] 当对手用攻击技能时触发

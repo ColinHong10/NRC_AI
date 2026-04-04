@@ -122,6 +122,35 @@ def _apply_debuff(pokemon: "Pokemon", params: Dict) -> None:
         pokemon.spdef_mod -= params["all_def"]
 
 
+def _clear_buffs(pokemon: "Pokemon") -> None:
+    pokemon.atk_mod = min(0.0, pokemon.atk_mod)
+    pokemon.def_mod = min(0.0, pokemon.def_mod)
+    pokemon.spatk_mod = min(0.0, pokemon.spatk_mod)
+    pokemon.spdef_mod = min(0.0, pokemon.spdef_mod)
+    pokemon.speed_mod = min(0.0, pokemon.speed_mod)
+    pokemon.life_drain_mod = 0.0
+    pokemon.skill_power_bonus = min(0, pokemon.skill_power_bonus)
+    pokemon.skill_power_pct_mod = min(0.0, pokemon.skill_power_pct_mod)
+    pokemon.skill_cost_mod = max(0, pokemon.skill_cost_mod)
+    pokemon.hit_count_mod = min(0, pokemon.hit_count_mod)
+    pokemon.priority_stage = min(0, pokemon.priority_stage)
+    pokemon.next_attack_power_bonus = 0
+    pokemon.next_attack_power_pct = 0.0
+
+
+def _clear_debuffs(pokemon: "Pokemon") -> None:
+    pokemon.atk_mod = max(0.0, pokemon.atk_mod)
+    pokemon.def_mod = max(0.0, pokemon.def_mod)
+    pokemon.spatk_mod = max(0.0, pokemon.spatk_mod)
+    pokemon.spdef_mod = max(0.0, pokemon.spdef_mod)
+    pokemon.speed_mod = max(0.0, pokemon.speed_mod)
+    pokemon.poison_stacks = 0
+    pokemon.burn_stacks = 0
+    pokemon.freeze_stacks = 0
+    pokemon.leech_stacks = 0
+    pokemon.priority_stage = max(0, pokemon.priority_stage)
+
+
 def _apply_permanent_mod(user: "Pokemon", skill: "Skill", params: Dict) -> None:
     """应用永久修改（能耗/威力）。per_counter 由 execute_counter 单独调用本函数。"""
     target = params.get("target", "")
@@ -168,15 +197,29 @@ def _execute_agility_old(pokemon: "Pokemon", enemy: "Pokemon", skill: "Skill") -
 def _h_damage(tag: EffectTag, ctx: Ctx) -> None:
     from src.battle import DamageCalculator
     skill = ctx.skill
-    power = skill.power + ctx.result.get("_power_bonus", 0)
-    power_mult = ctx.result.get("_power_mult", 1.0)
+    power = (
+        skill.power
+        + ctx.user.skill_power_bonus
+        + ctx.user.next_attack_power_bonus
+        + ctx.result.get("_power_bonus", 0)
+    )
+    power_mult = (
+        1.0
+        + ctx.user.skill_power_pct_mod
+        + ctx.user.next_attack_power_pct
+        + (ctx.result.get("_power_mult", 1.0) - 1.0)
+    )
     if power_mult != 1.0:
         power = int(power * power_mult)
     if power > 0 and not ctx.target.is_fainted:
         weather = getattr(ctx.state, "weather", None)
+        hit_count = max(1, skill.hit_count + ctx.user.hit_count_mod)
         dmg = DamageCalculator.calculate(ctx.user, ctx.target, skill,
-                                         power_override=power, weather=weather)
+                                         power_override=power, weather=weather,
+                                         hit_count_override=hit_count)
         ctx.result["damage"] = ctx.result.get("damage", 0) + dmg
+        if ctx.user.next_attack_power_bonus or ctx.user.next_attack_power_pct:
+            ctx.result["_consume_next_attack_mod"] = True
 
 
 def _h_self_buff(tag: EffectTag, ctx: Ctx) -> None:
@@ -219,9 +262,11 @@ def _h_enemy_lose_energy(tag: EffectTag, ctx: Ctx) -> None:
 
 
 def _h_life_drain(tag: EffectTag, ctx: Ctx) -> None:
-    pct = tag.params.get("pct", 0)
-    heal = int(ctx.result.get("damage", 0) * pct)
-    ctx.user.current_hp = min(ctx.user.hp, ctx.user.current_hp + heal)
+    ctx.result["_life_drain_pct"] = ctx.result.get("_life_drain_pct", 0.0) + tag.params.get("pct", 0)
+
+
+def _h_grant_life_drain(tag: EffectTag, ctx: Ctx) -> None:
+    ctx.user.life_drain_mod += tag.params.get("pct", 0)
 
 
 def _h_poison(tag: EffectTag, ctx: Ctx) -> None:
@@ -373,6 +418,46 @@ def _h_power_dynamic(tag: EffectTag, ctx: Ctx) -> None:
 
 def _h_permanent_mod(tag: EffectTag, ctx: Ctx) -> None:
     _apply_permanent_mod(ctx.user, ctx.skill, tag.params)
+
+
+def _h_skill_mod(tag: EffectTag, ctx: Ctx) -> None:
+    target = ctx.user if tag.params.get("target", "self") == "self" else ctx.target
+    stat = tag.params.get("stat", "")
+    value = tag.params.get("value", 0)
+    if stat == "power":
+        target.skill_power_bonus += int(value)
+    elif stat == "power_pct":
+        target.skill_power_pct_mod += value
+    elif stat == "cost":
+        target.skill_cost_mod += int(value)
+    elif stat == "hit_count":
+        target.hit_count_mod += int(value)
+    elif stat == "priority":
+        target.priority_stage += int(value)
+
+
+def _h_next_attack_mod(tag: EffectTag, ctx: Ctx) -> None:
+    ctx.user.next_attack_power_bonus += int(tag.params.get("power_bonus", 0))
+    ctx.user.next_attack_power_pct += tag.params.get("power_pct", 0.0)
+
+
+def _h_cleanse(tag: EffectTag, ctx: Ctx) -> None:
+    target = ctx.user if tag.params.get("target", "self") == "self" else ctx.target
+    mode = tag.params.get("mode", "all")
+    if mode in ("buffs", "all"):
+        _clear_buffs(target)
+    if mode in ("debuffs", "all"):
+        _clear_debuffs(target)
+
+
+def _h_dispel_buffs(tag: EffectTag, ctx: Ctx) -> None:
+    target = ctx.user if tag.params.get("target", "enemy") == "self" else ctx.target
+    _clear_buffs(target)
+
+
+def _h_dispel_debuffs(tag: EffectTag, ctx: Ctx) -> None:
+    target = ctx.user if tag.params.get("target", "self") == "self" else ctx.target
+    _clear_debuffs(target)
 
 
 def _h_position_buff(tag: EffectTag, ctx: Ctx) -> None:
@@ -607,6 +692,7 @@ _HANDLERS: Dict[E, Callable] = {
     E.STEAL_ENERGY:             _h_steal_energy,
     E.ENEMY_LOSE_ENERGY:        _h_enemy_lose_energy,
     E.LIFE_DRAIN:               _h_life_drain,
+    E.GRANT_LIFE_DRAIN:         _h_grant_life_drain,
     E.POISON:                   _h_poison,
     E.BURN:                     _h_burn,
     E.FREEZE:                   _h_freeze,
@@ -625,6 +711,11 @@ _HANDLERS: Dict[E, Callable] = {
     E.ENERGY_COST_DYNAMIC:      _h_energy_cost_dynamic,
     E.POWER_DYNAMIC:            _h_power_dynamic,
     E.PERMANENT_MOD:            _h_permanent_mod,
+    E.SKILL_MOD:                _h_skill_mod,
+    E.NEXT_ATTACK_MOD:          _h_next_attack_mod,
+    E.CLEANSE:                  _h_cleanse,
+    E.DISPEL_BUFFS:             _h_dispel_buffs,
+    E.DISPEL_DEBUFFS:           _h_dispel_debuffs,
     E.POSITION_BUFF:            _h_position_buff,
     E.DRIVE:                    _h_drive,
     E.PASSIVE_ENERGY_REDUCE:    _h_passive_energy_reduce,
@@ -711,6 +802,13 @@ class EffectExecutor:
         )
         for tag in effects:
             _apply_tag(tag, ctx)
+        total_drain = result.get("_life_drain_pct", 0.0) + getattr(user, "life_drain_mod", 0.0)
+        if total_drain > 0 and result.get("damage", 0) > 0:
+            heal = int(result["damage"] * total_drain)
+            user.current_hp = min(user.hp, user.current_hp + heal)
+        if result.get("_consume_next_attack_mod"):
+            user.next_attack_power_bonus = 0
+            user.next_attack_power_pct = 0.0
         return result
 
     # ────────────────────────────────────────
