@@ -12,7 +12,7 @@ from src.models import (
     Pokemon, Skill, BattleState, Type, SkillCategory,
     StatusType, get_type_effectiveness
 )
-from src.skill_db import get_skill, SPECIAL_TYPES
+from src.skill_db import get_skill
 from src.effect_models import E, Timing
 from src.effect_engine import EffectExecutor
 
@@ -35,7 +35,7 @@ class DamageCalculator:
         if power <= 0:
             return 0
 
-        if skill.skill_type in SPECIAL_TYPES:
+        if skill.category == SkillCategory.MAGICAL:
             atk = attacker.effective_spatk()
             dfn = defender.effective_spdef()
         else:
@@ -76,6 +76,23 @@ class DamageCalculator:
 # 回合执行
 # ============================================================
 Action = Tuple[int, ...]  # (skill_idx,) | (-1,) 汇合聚能 | (-2, switch_idx) 换人
+
+
+def _compare_action_order(state: BattleState, action_a: Action, action_b: Action) -> int:
+    """比较回合内行动顺序: 先手等级 > 当前速度 > 随机。返回 -1 表示 A 先手，否则 B 先手。"""
+    pri_a = get_priority(state, "a", action_a)
+    pri_b = get_priority(state, "b", action_b)
+    if pri_a != pri_b:
+        return -1 if pri_a > pri_b else 1
+
+    p_a = state.team_a[state.current_a]
+    p_b = state.team_b[state.current_b]
+    spd_a = p_a.effective_speed()
+    spd_b = p_b.effective_speed()
+    if spd_a != spd_b:
+        return -1 if spd_a > spd_b else 1
+
+    return random.choice([-1, 1])
 
 
 def get_actions(state: BattleState, team: str) -> List[Action]:
@@ -337,11 +354,8 @@ def execute_full_turn(state: BattleState, action_a: Action, action_b: Action,
     state.switch_this_turn_a = False
     state.switch_this_turn_b = False
 
-    # 速度判定
-    spd_a = p_a.effective_speed() * (1.0 + get_priority(state, "a", action_a))
-    spd_b = p_b.effective_speed() * (1.0 + get_priority(state, "b", action_b))
-
-    if spd_a >= spd_b:
+    # 出招顺序：先手等级 > 当前有效速度 > 随机
+    if _compare_action_order(state, action_a, action_b) == -1:
         first_team, second_team = "a", "b"
         first_act, second_act = action_a, action_b
     else:
@@ -349,7 +363,7 @@ def execute_full_turn(state: BattleState, action_a: Action, action_b: Action,
         first_act, second_act = action_b, action_a
 
     # 先手行动
-    _execute_with_counter(state, first_team, first_act, second_team, second_act)
+    _execute_with_counter(state, first_team, first_act, second_team, second_act, is_first=True)
     _check_fainted_and_deduct_mp(state)
     auto_switch(state, switch_cb_a, switch_cb_b)
 
@@ -357,7 +371,7 @@ def execute_full_turn(state: BattleState, action_a: Action, action_b: Action,
         return
 
     # 后手行动
-    _execute_with_counter(state, second_team, second_act, first_team, first_act)
+    _execute_with_counter(state, second_team, second_act, first_team, first_act, is_first=False)
     _check_fainted_and_deduct_mp(state)
     auto_switch(state, switch_cb_a, switch_cb_b)
 
@@ -371,7 +385,8 @@ def execute_full_turn(state: BattleState, action_a: Action, action_b: Action,
 
 
 def _execute_with_counter(state: BattleState, team: str, action: Action,
-                          enemy_team: str, enemy_action: Action) -> None:
+                          enemy_team: str, enemy_action: Action,
+                          is_first: bool) -> None:
     """执行行动+应对解析 (兼容新旧引擎)"""
     team_list = state.team_a if team == "a" else state.team_b
     idx = state.current_a if team == "a" else state.current_b
@@ -461,13 +476,13 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
 
     # 所有技能走新引擎（效果由 EffectTag 驱动）
     _execute_new_engine(state, team, enemy_team, current, enemy, skill,
-                        action, enemy_action, team_list, idx)
+                        action, enemy_action, team_list, idx, is_first)
 
 
 def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
                         current: Pokemon, enemy: Pokemon, skill: Skill,
                         action: Action, enemy_action: Action,
-                        team_list: list, idx: int) -> None:
+                        team_list: list, idx: int, is_first: bool) -> None:
     """新引擎路径: 用 EffectExecutor 执行有 effects 的技能"""
 
     # 获取对方技能 (用于应对判定)
@@ -475,9 +490,6 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
     enemy_list = state.team_b if team == "a" else state.team_a
     if enemy_action[0] >= 0 and not enemy.is_fainted:
         enemy_skill = enemy.skills[enemy_action[0]]
-
-    # 判断先后手
-    is_first = _is_first_action(state, team, action, enemy_team, enemy_action)
 
     # 执行主效果
     result = EffectExecutor.execute_skill(
@@ -697,24 +709,18 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
 def _is_first_action(state: BattleState, team: str, action: Action,
                      enemy_team: str, enemy_action: Action) -> bool:
     """判断当前行动是否先于对手"""
-    if action[0] < 0 or enemy_action[0] < 0:
-        return True
     if team == "a":
         action_a, action_b = action, enemy_action
     else:
         action_a, action_b = enemy_action, action
-    p_a = state.team_a[state.current_a]
-    p_b = state.team_b[state.current_b]
-    spd_a = p_a.effective_speed() * (1.0 + get_priority(state, "a", action_a))
-    spd_b = p_b.effective_speed() * (1.0 + get_priority(state, "b", action_b))
+    order = _compare_action_order(state, action_a, action_b)
     if team == "a":
-        return spd_a >= spd_b
-    else:
-        return spd_b > spd_a
+        return order == -1
+    return order == 1
 
 
-def get_priority(state: BattleState, team: str, action: Action) -> float:
-    """获取先手修正"""
+def get_priority(state: BattleState, team: str, action: Action) -> int:
+    """获取先手等级。默认 0，+1 必定先于 0，-1 慢于 0。"""
     if action[0] < 0:
         return 0
     team_list = state.team_a if team == "a" else state.team_b
@@ -722,7 +728,7 @@ def get_priority(state: BattleState, team: str, action: Action) -> float:
     if action[0] >= len(team_list[idx].skills):
         return 0
     skill = team_list[idx].skills[action[0]]
-    return skill.priority_mod * 0.1
+    return skill.priority_mod
 
 
 def check_winner(state: BattleState) -> Optional[str]:

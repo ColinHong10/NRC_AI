@@ -52,6 +52,11 @@ def attack_on_status_perm_cost(delta: int) -> list:
     return [T(E.DAMAGE), on_status(T(E.PERMANENT_MOD, target="cost", delta=delta))]
 
 
+def attack_life_drain(pct: float) -> list:
+    """攻击 + 吸血，给高价值直伤技能复用。"""
+    return [T(E.DAMAGE), T(E.LIFE_DRAIN, pct=pct)]
+
+
 # ============================================================
 #  技能效果配置: Dict[技能名, List[EffectTag]]
 # ============================================================
@@ -203,6 +208,27 @@ SKILL_EFFECTS = {
 
     # 吓退: 减伤70% + 应对攻击: 敌方脱离
     "吓退": defense_counter(0.7, T(E.FORCE_ENEMY_SWITCH)),
+
+    # ── 高价值手工兜底 ──
+    # 只写现有引擎能精确表达的逻辑，避免把“看起来像实现”误当成真的实现。
+
+    # 蝙蝠: 造成物伤，并吸血100%
+    "蝙蝠": attack_life_drain(1.0),
+
+    # 汲取: 造成魔伤，并吸血100%
+    "汲取": attack_life_drain(1.0),
+
+    # 丰饶: 自己获得物攻和魔攻+130%
+    "丰饶": [T(E.SELF_BUFF, atk=1.3, spatk=1.3)],
+
+    # 锐利眼神: 敌方获得物防和魔防-120%
+    "锐利眼神": [T(E.ENEMY_DEBUFF, _params={"def": 1.2, "spdef": 1.2})],
+
+    # 盐水浴: 自己获得全技能能耗-2，应对防御时改为-3
+    "盐水浴": [
+        T(E.PASSIVE_ENERGY_REDUCE, reduce=2, range="all"),
+        on_defense(T(E.PASSIVE_ENERGY_REDUCE, reduce=1, range="all")),
+    ],
 }
 
 

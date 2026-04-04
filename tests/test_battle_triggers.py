@@ -8,12 +8,13 @@ Covers:
 
 import os
 import sys
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models import Pokemon, Skill, BattleState, Type, SkillCategory
 from src.effect_models import E, EffectTag, Timing, AbilityEffect
-from src.battle import auto_switch, execute_full_turn, _is_first_action
+from src.battle import auto_switch, execute_full_turn, _is_first_action, DamageCalculator
 
 
 def make_skill(name, power=40, energy=0, skill_type=Type.NORMAL,
@@ -134,8 +135,70 @@ def test_is_first_action_handles_enemy_action_indices():
     assert is_first is True
 
 
+def test_priority_beats_speed():
+    slow_priority = make_pokemon(
+        "slow_priority",
+        speed=50,
+        skills=[make_skill("quick", power=50, energy=0)],
+    )
+    slow_priority.skills[0].priority_mod = 1
+    fast_normal = make_pokemon(
+        "fast_normal",
+        speed=200,
+        skills=[make_skill("normal", power=50, energy=0)],
+    )
+    state = BattleState(team_a=[slow_priority], team_b=[fast_normal], current_a=0, current_b=0)
+
+    assert _is_first_action(state, "a", (0,), "b", (0,)) is True
+
+
+def test_speed_buffs_break_priority_ties():
+    slower = make_pokemon("slower", speed=100, skills=[make_skill("a", energy=0)])
+    faster_after_buff = make_pokemon("faster", speed=90, skills=[make_skill("b", energy=0)])
+    faster_after_buff.speed_mod = 0.5
+    state = BattleState(team_a=[slower], team_b=[faster_after_buff], current_a=0, current_b=0)
+
+    assert _is_first_action(state, "b", (0,), "a", (0,)) is True
+
+
+def test_equal_priority_and_speed_use_random_tiebreak():
+    a = make_pokemon("a", speed=100, skills=[make_skill("a", energy=0)])
+    b = make_pokemon("b", speed=100, skills=[make_skill("b", energy=0)])
+    state = BattleState(team_a=[a], team_b=[b], current_a=0, current_b=0)
+
+    with patch("src.battle.random.choice", return_value=-1):
+        assert _is_first_action(state, "a", (0,), "b", (0,)) is True
+    with patch("src.battle.random.choice", return_value=1):
+        assert _is_first_action(state, "a", (0,), "b", (0,)) is False
+
+
+def test_physical_dark_skill_uses_attack_stat():
+    attacker = make_pokemon(
+        "attacker",
+        attack=200,
+        spatk=20,
+        speed=100,
+        skills=[make_skill("bat", power=60, energy=0, skill_type=Type.DARK, category=SkillCategory.PHYSICAL)],
+    )
+    defender = make_pokemon(
+        "defender",
+        defense=80,
+        spdef=300,
+        speed=80,
+        ptype=Type.NORMAL,
+    )
+
+    damage = DamageCalculator.calculate(attacker, defender, attacker.skills[0])
+    expected = int((attacker.effective_atk() / defender.effective_def()) * 60 * 0.9)
+    assert damage == max(1, expected)
+
+
 if __name__ == "__main__":
     test_battle_start_triggers_once()
     test_ally_counter_triggers_allied_ability()
     test_is_first_action_handles_enemy_action_indices()
+    test_priority_beats_speed()
+    test_speed_buffs_break_priority_ties()
+    test_equal_priority_and_speed_use_random_tiebreak()
+    test_physical_dark_skill_uses_attack_stat()
     print("PASS: battle trigger regressions")
