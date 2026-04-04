@@ -237,6 +237,14 @@ class Pokemon:
     spatk_mod: float = 0.0
     spdef_mod: float = 0.0
     speed_mod: float = 0.0
+    life_drain_mod: float = 0.0
+    skill_power_bonus: int = 0
+    skill_power_pct_mod: float = 0.0
+    skill_cost_mod: int = 0
+    hit_count_mod: int = 0
+    priority_stage: int = 0
+    next_attack_power_bonus: int = 0
+    next_attack_power_pct: float = 0.0
 
     # 状态层数
     poison_stacks: int = 0          # 中毒层数 (每层3%/回合, 换人清除)
@@ -254,6 +262,7 @@ class Pokemon:
 
     # 旧字段保留兼容
     freeze_stacks: int = 0
+
 
     # ── 新引擎字段 ──
     ability_effects: List[Any] = field(default_factory=list)  # List[AbilityEffect]
@@ -319,6 +328,14 @@ class Pokemon:
         self.spatk_mod = 0.0
         self.spdef_mod = 0.0
         self.speed_mod = 0.0
+        self.life_drain_mod = 0.0
+        self.skill_power_bonus = 0
+        self.skill_cost_mod = 0
+        self.hit_count_mod = 0
+        self.priority_stage = 0
+        self.skill_power_pct_mod = 0.0
+        self.next_attack_power_bonus = 0
+        self.next_attack_power_pct = 0.0
         self.poison_stacks = 0
         self.burn_stacks = 0
         self.leech_stacks = 0
@@ -345,6 +362,14 @@ class Pokemon:
         p.spatk_mod = self.spatk_mod
         p.spdef_mod = self.spdef_mod
         p.speed_mod = self.speed_mod
+        p.life_drain_mod = self.life_drain_mod
+        p.skill_power_bonus = self.skill_power_bonus
+        p.skill_power_pct_mod = self.skill_power_pct_mod
+        p.skill_cost_mod = self.skill_cost_mod
+        p.hit_count_mod = self.hit_count_mod
+        p.priority_stage = self.priority_stage
+        p.next_attack_power_bonus = self.next_attack_power_bonus
+        p.next_attack_power_pct = self.next_attack_power_pct
         p.poison_stacks = self.poison_stacks
         p.burn_stacks = self.burn_stacks
         p.frostbite_damage = self.frostbite_damage
@@ -386,6 +411,7 @@ class BattleState:
     # 本回合敌方是否换人 (嘲弄条件增益用)
     switch_this_turn_a: bool = False
     switch_this_turn_b: bool = False
+    battle_start_effects_triggered: bool = False
 
     def get_current(self, team: str) -> Pokemon:
         if team == "a":
@@ -404,5 +430,6 @@ class BattleState:
             counter_count_b=self.counter_count_b,
             switch_this_turn_a=self.switch_this_turn_a,
             switch_this_turn_b=self.switch_this_turn_b,
+            battle_start_effects_triggered=self.battle_start_effects_triggered,
         )
         return bs

@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from src.skill_db import load_skills
 from src.models import BattleState, StatusType
+from src.effect_models import E
 from src.battle import (
     TeamBuilder, execute_full_turn, check_winner,
     auto_switch, get_actions
@@ -35,6 +36,207 @@ def _ensure_loaded():
         from src.pokemon_db import load_pokemon_db
         load_pokemon_db()
         _db_loaded = True
+
+
+def _pct_text(value: float) -> str:
+    """将比例值转成更适合 UI 展示的百分比文本。"""
+    if value == int(value):
+        return f"{int(value)}%"
+    return f"{value:.0f}%"
+
+
+def _format_buff_parts(params: dict, prefix: str) -> str:
+    parts = []
+    for key, label in [
+        ("atk", "物攻"),
+        ("def", "物防"),
+        ("spatk", "魔攻"),
+        ("spdef", "魔防"),
+        ("speed", "速度"),
+    ]:
+        if key in params:
+            parts.append(f"{label}{prefix}{_pct_text(params[key] * 100)}")
+    if "all_atk" in params:
+        parts.append(f"双攻{prefix}{_pct_text(params['all_atk'] * 100)}")
+    if "all_def" in params:
+        parts.append(f"双防{prefix}{_pct_text(params['all_def'] * 100)}")
+    return "，".join(parts)
+
+
+def _effect_tag_text(tag) -> str:
+    """把 EffectTag 翻译成前端更易读的短文本。"""
+    params = getattr(tag, "params", {}) or {}
+    t = getattr(tag, "type", None)
+
+    if t == E.DAMAGE:
+        return "造成伤害"
+    if t == E.HEAL_HP:
+        return f"回复{_pct_text(params.get('pct', 0) * 100)}HP"
+    if t == E.HEAL_ENERGY:
+        return f"回能+{params.get('amount', 1)}"
+    if t == E.STEAL_ENERGY:
+        return f"偷能+{params.get('amount', 1)}"
+    if t == E.ENEMY_LOSE_ENERGY:
+        return f"敌方失能-{params.get('amount', 1)}"
+    if t == E.LIFE_DRAIN:
+        return f"吸血{_pct_text(params.get('pct', 0) * 100)}"
+    if t == E.SELF_BUFF:
+        detail = _format_buff_parts(params, "+")
+        return f"自增益{('：' + detail) if detail else ''}"
+    if t == E.ENEMY_DEBUFF:
+        detail = _format_buff_parts(params, "-")
+        return f"敌减益{('：' + detail) if detail else ''}"
+    if t == E.POISON:
+        return f"中毒×{params.get('stacks', 1)}"
+    if t == E.BURN:
+        return f"灼烧×{params.get('stacks', 1)}"
+    if t == E.FREEZE:
+        return f"冻结×{params.get('stacks', 1)}"
+    if t == E.LEECH:
+        return f"寄生×{params.get('stacks', 1)}"
+    if t == E.METEOR:
+        return f"星陨×{params.get('stacks', 1)}"
+    if t == E.POISON_MARK:
+        return f"中毒印记×{params.get('stacks', 1)}"
+    if t == E.MOISTURE_MARK:
+        return f"湿润印记×{params.get('stacks', 1)}"
+    if t == E.DAMAGE_REDUCTION:
+        return f"减伤{_pct_text(params.get('pct', 0) * 100)}"
+    if t == E.FORCE_SWITCH:
+        return "强制换人"
+    if t == E.FORCE_ENEMY_SWITCH:
+        return "逼退对手"
+    if t == E.AGILITY:
+        return "先制"
+    if t == E.INTERRUPT:
+        return "打断"
+    if t == E.POWER_DYNAMIC:
+        condition = params.get("condition", "")
+        if condition == "first_strike":
+            return f"先手威力+{_pct_text(params.get('bonus_pct', 0) * 100)}"
+        if condition == "per_poison":
+            return f"每层中毒增威{params.get('bonus_per_stack', 0)}"
+        if condition == "counter":
+            return f"应对威力×{params.get('multiplier', 1.0)}"
+        return "动态威力"
+    if t == E.ENERGY_COST_DYNAMIC:
+        return f"动态减耗：每层减{params.get('reduce', 0)}"
+    if t == E.PERMANENT_MOD:
+        target = params.get("target", "")
+        delta = params.get("delta", 0)
+        if target == "cost":
+            return f"永久能耗{delta:+d}"
+        if target == "power":
+            return f"永久威力{delta:+d}"
+        return "永久修正"
+    if t == E.POSITION_BUFF:
+        positions = params.get("positions", [])
+        return f"位置增益{positions}"
+    if t == E.DRIVE:
+        return f"传动{params.get('value', 1)}"
+    if t == E.PASSIVE_ENERGY_REDUCE:
+        return f"连带减耗-{params.get('reduce', 0)}"
+    if t == E.REPLAY_AGILITY:
+        return "重复先制"
+    if t == E.AGILITY_COST_SHARE:
+        return f"先制分摊/{params.get('divisor', 2)}"
+    if t == E.ENERGY_COST_ACCUMULATE:
+        return f"每次能耗+{params.get('delta', 1)}"
+    if t == E.ENEMY_ENERGY_COST_UP:
+        return f"敌方能耗+{params.get('amount', 0)}"
+    if t == E.MIRROR_DAMAGE:
+        return "反弹原始伤害"
+    if t == E.CONVERT_BUFF_TO_POISON:
+        return "增益转中毒"
+    if t == E.CONVERT_POISON_TO_MARK:
+        return "中毒转印记"
+    if t == E.DISPEL_MARKS:
+        return "驱散印记"
+    if t == E.CONDITIONAL_BUFF:
+        return "条件增益"
+    if t == E.COUNTER_ATTACK:
+        base = "应对攻击"
+        subs = getattr(tag, "sub_effects", None) or []
+        if subs:
+            sub_text = "，".join(_effect_tag_text(sub) for sub in subs)
+            return f"{base}：{sub_text}" if sub_text else base
+        return base
+    if t == E.COUNTER_STATUS:
+        base = "应对状态"
+        subs = getattr(tag, "sub_effects", None) or []
+        if subs:
+            sub_text = "，".join(_effect_tag_text(sub) for sub in subs)
+            return f"{base}：{sub_text}" if sub_text else base
+        return base
+    if t == E.COUNTER_DEFENSE:
+        base = "应对防御"
+        subs = getattr(tag, "sub_effects", None) or []
+        if subs:
+            sub_text = "，".join(_effect_tag_text(sub) for sub in subs)
+            return f"{base}：{sub_text}" if sub_text else base
+        return base
+    if t == E.WEATHER:
+        return f"天气：{params.get('type', 'unknown')}"
+    if t == E.ABILITY_COMPUTE:
+        return f"特性计算：{params.get('action', '')}"
+    if t == E.ABILITY_INCREMENT_COUNTER:
+        return "特性计数+1"
+    if t == E.TRANSFER_MODS:
+        return "离场传递增益"
+    if t == E.BURN_NO_DECAY:
+        return "灼烧不衰减"
+    return getattr(t, "name", "未知效果")
+
+
+def _skill_effect_display(skill) -> dict:
+    """生成前端展示用的技能效果摘要。"""
+    tags = []
+    details = []
+    if getattr(skill, "effects", None):
+        for tag in skill.effects:
+            text = _effect_tag_text(tag)
+            details.append(text)
+            tags.append(text.split("：", 1)[0])
+
+    if skill.life_drain > 0:
+        tags.append(f"吸血{int(skill.life_drain * 100)}%")
+    if skill.damage_reduction > 0:
+        tags.append(f"减伤{int(skill.damage_reduction * 100)}%")
+    if skill.self_heal_hp > 0:
+        tags.append(f"回HP{int(skill.self_heal_hp * 100)}%")
+    if skill.self_heal_energy > 0:
+        tags.append(f"回能+{skill.self_heal_energy}")
+    if skill.poison_stacks > 0:
+        tags.append(f"中毒×{skill.poison_stacks}")
+    if skill.burn_stacks > 0:
+        tags.append(f"灼烧×{skill.burn_stacks}")
+    if skill.freeze_stacks > 0:
+        tags.append(f"冻结×{skill.freeze_stacks}")
+    if skill.leech_stacks > 0:
+        tags.append(f"寄生×{skill.leech_stacks}")
+    if skill.meteor_stacks > 0:
+        tags.append(f"星陨×{skill.meteor_stacks}")
+    if skill.hit_count > 1:
+        tags.append(f"{skill.hit_count}连击")
+    if skill.force_switch:
+        tags.append("强制换人")
+    if skill.agility:
+        tags.append("先制")
+    if skill.charge:
+        tags.append("蓄力")
+    if skill.priority_mod > 0:
+        tags.append("先手")
+    if skill.is_mark:
+        tags.append("印记")
+
+    tags = list(dict.fromkeys([t for t in tags if t]))
+    details = list(dict.fromkeys([d for d in details if d]))
+    return {
+        "tags": tags,
+        "details": details,
+        "summary": "；".join(details) if details else "",
+        "has_effects": bool(details),
+    }
 
 
 # ═══════════════════════════════════════
@@ -216,6 +418,7 @@ def serialize_pokemon(p, is_current=False):
 
 
 def serialize_skill(s, current_energy, cooldown=0):
+    effect_view = _skill_effect_display(s)
     return {
         "name":        s.name,
         "type":        s.skill_type.value,
@@ -226,6 +429,10 @@ def serialize_skill(s, current_energy, cooldown=0):
         "on_cooldown": cooldown > 0,
         "cooldown":    cooldown,
         "tags":        _skill_tags(s),
+        "effect_tags": effect_view["tags"],
+        "effect_details": effect_view["details"],
+        "effect_summary": effect_view["summary"],
+        "has_effects": effect_view["has_effects"],
     }
 
 
@@ -245,13 +452,12 @@ def _skill_tags(s):
     if s.charge:               tags.append("蓄力")
     if s.priority_mod > 0:     tags.append("先手")
     if s.is_mark:              tags.append("印记")
-    # 从 effects 读取更多标签
+    # 从 effects 读取更多标签，避免 UI 只看到基础数值
     if hasattr(s, "effects") and s.effects:
-        from src.effect_models import E
         for tag in s.effects:
-            if tag.type == E.COUNTER_ATTACK:  tags.append("应对物/魔")
-            if tag.type == E.COUNTER_DEFENSE: tags.append("应对防御")
-            if tag.type == E.COUNTER_STATUS:  tags.append("应对变化")
+            text = _effect_tag_text(tag)
+            if text:
+                tags.append(text.split("：", 1)[0])
     return list(dict.fromkeys(tags))  # 去重保序
 
 
@@ -801,14 +1007,24 @@ async def api_pokemon_skills(name: str):
         (pokemon_id,),
     )
     rows = c.fetchall()
-    return JSONResponse([{
-        "name":        r["name"],
-        "element":     r["element"],
-        "category":    r["category"],
-        "energy_cost": r["energy_cost"],
-        "power":       r["power"],
-        "description": r["description"] or "",
-    } for r in rows])
+    from src.skill_db import get_skill
+    result = []
+    for r in rows:
+        skill = get_skill(r["name"])
+        effect_view = _skill_effect_display(skill)
+        result.append({
+            "name":        r["name"],
+            "element":     r["element"],
+            "category":    r["category"],
+            "energy_cost": r["energy_cost"],
+            "power":       r["power"],
+            "description": r["description"] or "",
+            "tags":        effect_view["tags"],
+            "effect_details": effect_view["details"],
+            "effect_summary": effect_view["summary"],
+            "has_effects": effect_view["has_effects"],
+        })
+    return JSONResponse(result)
 
 
 # ═══════════════════════════════════════

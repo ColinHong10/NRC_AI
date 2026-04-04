@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ':*)",
+      "Bash(python -u tests/test_battle_fixes.py)",
+      "Bash(echo \"DONE:$?\")"
+    ]
+  }
+}

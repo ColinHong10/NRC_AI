@@ -56,6 +56,7 @@ NRC_AI/
 │
 ├── scripts/                    # 工具脚本
 │   ├── crawl_pokemon_skills.py  # BiliGame Wiki 技能数据爬虫
+│   ├── audit_effect_coverage.py    # 技能效果覆盖率 / 特性缺口审计
 │   └── generate_skill_effects.py  # 数据库 description → 效果代码生成器
 │
 ├── run_web.py                  # Web 界面启动脚本
