@@ -699,10 +699,14 @@ def _is_first_action(state: BattleState, team: str, action: Action,
     """判断当前行动是否先于对手"""
     if action[0] < 0 or enemy_action[0] < 0:
         return True
+    if team == "a":
+        action_a, action_b = action, enemy_action
+    else:
+        action_a, action_b = enemy_action, action
     p_a = state.team_a[state.current_a]
     p_b = state.team_b[state.current_b]
-    spd_a = p_a.effective_speed() * (1.0 + get_priority(state, "a", action))
-    spd_b = p_b.effective_speed() * (1.0 + get_priority(state, "b", enemy_action))
+    spd_a = p_a.effective_speed() * (1.0 + get_priority(state, "a", action_a))
+    spd_b = p_b.effective_speed() * (1.0 + get_priority(state, "b", action_b))
     if team == "a":
         return spd_a >= spd_b
     else:
@@ -715,6 +719,8 @@ def get_priority(state: BattleState, team: str, action: Action) -> float:
         return 0
     team_list = state.team_a if team == "a" else state.team_b
     idx = state.current_a if team == "a" else state.current_b
+    if action[0] >= len(team_list[idx].skills):
+        return 0
     skill = team_list[idx].skills[action[0]]
     return skill.priority_mod * 0.1
 
