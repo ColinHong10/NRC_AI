@@ -79,6 +79,13 @@ class E(Enum):
     ENEMY_ENERGY_COST_UP = auto()    # 敌方攻击技能能耗+N  params: {"amount":6,"filter":"attack"}
     COUNTER_OVERRIDE = auto()        # 应对时替换效果 params: {"replace":"poison","from":2,"to":6}
 
+    # ── 特性专用原语 ──
+    ABILITY_COMPUTE = auto()         # 运行时计算并存入 ability_state
+                                     # params: {"action": "count_poison_skills"|"shared_wing_skills"}
+    ABILITY_INCREMENT_COUNTER = auto()  # 计数器+1（海豹船长）
+    TRANSFER_MODS = auto()           # 离场时传递属性修正（翠顶夫人洁癖）
+    BURN_NO_DECAY = auto()           # 标记: 灼烧本回合不衰减（燃薪虫煤渣草）
+
     # ── 复合 / 特殊 ──
     REPLAY_AGILITY = auto()          # 重放迅捷技能 params: {} (疾风连袭)
     ENERGY_COST_ACCUMULATE = auto()  # 每次使用后能耗+N  params: {"delta":1}

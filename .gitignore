@@ -12,3 +12,17 @@ venv/
 *.log
 .DS_Store
 **/.DS_Store
+
+# WorkBuddy workspace config
+.workbuddy/
+
+# Database runtime files
+data/nrc.db-shm
+data/nrc.db-wal
+data/crawl_progress.json
+
+# Local info (not for repo)
+信息/
+
+# Large raw data / duplicates
+data/skills_raw.json

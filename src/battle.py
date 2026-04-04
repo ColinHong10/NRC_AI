@@ -5,12 +5,12 @@
 import sys
 import os
 import random
-from typing import Tuple, Optional, List
+from typing import Optional, List, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.models import (
     Pokemon, Skill, BattleState, Type, SkillCategory,
-    StatusType, StatType, get_type_effectiveness
+    StatusType, get_type_effectiveness
 )
 from src.skill_db import get_skill, SPECIAL_TYPES
 from src.effect_models import E, Timing
@@ -58,119 +58,6 @@ class DamageCalculator:
 # ============================================================
 # 技能执行
 # ============================================================
-def apply_skill(attacker: Pokemon, defender: Pokemon, skill: Skill,
-                is_counter: bool = False, counter_category: SkillCategory = None) -> int:
-    """执行技能，返回造成的伤害"""
-
-    # --- 自身增益 ---
-    attacker.apply_self_buff(skill)
-
-    # --- 敌方减益 ---
-    defender.apply_enemy_debuff(skill)
-
-    # --- 回复HP ---
-    if skill.self_heal_hp > 0:
-        heal = int(attacker.hp * skill.self_heal_hp)
-        attacker.current_hp = min(attacker.hp, attacker.current_hp + heal)
-
-    # --- 回复/偷取能量 ---
-    if skill.self_heal_energy > 0:
-        attacker.gain_energy(skill.self_heal_energy)
-    if skill.steal_energy > 0:
-        attacker.gain_energy(skill.steal_energy)
-        defender.energy = max(0, defender.energy - skill.steal_energy)
-    if skill.enemy_lose_energy > 0:
-        defender.energy = max(0, defender.energy - skill.enemy_lose_energy)
-
-    # --- 状态附加 ---
-    if skill.poison_stacks > 0:
-        defender.poison_stacks += skill.poison_stacks
-    if skill.burn_stacks > 0:
-        defender.burn_stacks += skill.burn_stacks
-    if skill.freeze_stacks > 0:
-        defender.freeze_stacks += skill.freeze_stacks
-    if skill.leech_stacks > 0:
-        defender.leech_stacks += skill.leech_stacks
-    if skill.meteor_stacks > 0:
-        defender.meteor_stacks += skill.meteor_stacks
-        if defender.meteor_countdown <= 0:
-            defender.meteor_countdown = 3
-
-    # --- 伤害计算 ---
-    power = skill.power
-
-    # 应对效果：威力倍率
-    if is_counter and counter_category:
-        if counter_category in (SkillCategory.PHYSICAL, SkillCategory.MAGICAL):
-            # 对方用攻击，我的应对效果
-            pass  # 防御技能主要减伤，攻击技能看应对状态
-        if counter_category == SkillCategory.STATUS:
-            if skill.counter_status_power_mult > 1:
-                power = int(power * skill.counter_status_power_mult)
-        if counter_category == SkillCategory.DEFENSE:
-            if skill.counter_defense_power_mult > 1:
-                power = int(power * skill.counter_defense_power_mult)
-
-    if power <= 0 and skill.counter_physical_power_mult > 0:
-        return 0
-
-    damage = DamageCalculator.calculate(attacker, defender, skill, power_override=power)
-
-    # --- 防御减伤 ---
-    if skill.damage_reduction > 0:
-        # 如果这是防御技能且对方在攻击，减少受到的伤害
-        pass  # 减伤在execute_turn中处理
-
-    # 吸血在 _execute_with_counter 中统一处理，此处不做
-
-    return damage
-
-
-def apply_defense_response(defender: Pokemon, attacker: Pokemon,
-                           def_skill: Skill, atk_skill: Skill,
-                           damage: int) -> Tuple[int, bool]:
-    """处理防御技能的应对效果，返回(最终伤害, 是否完全防御)"""
-    final_damage = damage
-
-    # 减伤
-    if def_skill.damage_reduction > 0:
-        final_damage = int(damage * (1.0 - def_skill.damage_reduction))
-
-    # 应对攻击的额外效果
-    if def_skill.counter_physical_drain > 0:
-        heal = int(final_damage * def_skill.counter_physical_drain)
-        defender.current_hp = min(defender.hp, defender.current_hp + heal)
-    if def_skill.counter_physical_energy_drain > 0:
-        attacker.energy = max(0, attacker.energy - def_skill.counter_physical_energy_drain)
-    if def_skill.counter_physical_self_atk > 0:
-        defender.atk_mod += def_skill.counter_physical_self_atk
-    if def_skill.counter_physical_enemy_def > 0:
-        attacker.def_mod -= def_skill.counter_physical_enemy_def
-    if def_skill.counter_physical_enemy_atk > 0:
-        attacker.atk_mod -= def_skill.counter_physical_enemy_atk
-
-    # 应对反伤
-    if def_skill.counter_damage_reflect > 0:
-        reflect = int(final_damage * def_skill.counter_damage_reflect)
-        attacker.current_hp -= reflect
-
-    return max(0, final_damage), def_skill.damage_reduction >= 1.0
-
-
-def apply_counter_status(attacker: Pokemon, defender: Pokemon,
-                         atk_skill: Skill, def_skill: Skill) -> int:
-    """攻击技能应对状态技能的额外效果"""
-    extra = 0
-    if def_skill.category == SkillCategory.STATUS:
-        if atk_skill.counter_status_enemy_lose_energy > 0:
-            defender.energy = max(0, defender.energy - atk_skill.counter_status_enemy_lose_energy)
-            extra += atk_skill.counter_status_enemy_lose_energy
-        if atk_skill.counter_physical_self_atk > 0:
-            attacker.atk_mod += atk_skill.counter_physical_self_atk
-        if atk_skill.counter_status_poison_stacks > 0:
-            defender.poison_stacks += atk_skill.counter_status_poison_stacks
-    return extra
-
 
 # ============================================================
 # 回合执行
@@ -200,53 +87,6 @@ def get_actions(state: BattleState, team: str) -> List[Action]:
 
     return actions if actions else [(-1,)]
 
-
-def apply_action(state: BattleState, team: str, action: Action) -> Optional[str]:
-    """执行动作，返回技能名(用于日志)"""
-    team_list = state.team_a if team == "a" else state.team_b
-    idx = state.current_a if team == "a" else state.current_b
-    enemy_list = state.team_b if team == "a" else state.team_a
-    eidx = state.current_b if team == "a" else state.current_a
-    current = team_list[idx]
-    defender = enemy_list[eidx]
-
-    if action[0] == -2:
-        if team == "a":
-            state.current_a = action[1]
-        else:
-            state.current_b = action[1]
-        return f"换人->{team_list[action[1]].name}"
-
-    if action[0] == -1:
-        current.gain_energy(5)
-        return "汇合聚能"
-
-    skill = current.skills[action[0]]
-    current.energy -= skill.energy_cost
-
-    if skill.force_switch:
-        # 脱离
-        alive = [i for i, p in enumerate(team_list) if not p.is_fainted and i != idx]
-        if alive:
-            current.on_switch_out()
-            new_idx = random.choice(alive)
-            if team == "a":
-                state.current_a = new_idx
-            else:
-                state.current_b = new_idx
-
-    if skill.category == SkillCategory.DEFENSE:
-        # 防御技能不造成直接伤害，效果在应对时处理
-        return skill.name
-
-    if skill.power > 0 and not defender.is_fainted:
-        damage = apply_skill(current, defender, skill)
-        defender.current_hp -= damage
-        if defender.current_hp <= 0:
-            defender.current_hp = 0
-            defender.status = StatusType.FAINTED
-
-    return skill.name
 
 
 def auto_switch(state: BattleState, switch_cb_a=None, switch_cb_b=None) -> None:
@@ -381,36 +221,6 @@ def turn_end_effects(state: BattleState) -> None:
                 p.cooldowns[k] -= 1
 
 
-def resolve_counter(attacker: Pokemon, defender: Pokemon,
-                    atk_skill: Skill, def_skill: Skill, damage: int) -> int:
-    """解析应对交互，返回最终伤害"""
-    if def_skill.category == SkillCategory.DEFENSE:
-        if atk_skill.category in (SkillCategory.PHYSICAL, SkillCategory.MAGICAL):
-            # 攻击 vs 防御 → 防御减伤+应对效果
-            final_dmg, _ = apply_defense_response(defender, attacker, def_skill, atk_skill, damage)
-            return final_dmg
-        # 防御 vs 状态 → 状态的应对防御效果
-        if def_skill.counter_defense_self_atk > 0:
-            defender.atk_mod += def_skill.counter_defense_self_atk
-        if def_skill.counter_defense_enemy_def > 0:
-            attacker.def_mod -= def_skill.counter_defense_enemy_def
-
-    elif def_skill.category == SkillCategory.STATUS:
-        if atk_skill.category in (SkillCategory.PHYSICAL, SkillCategory.MAGICAL):
-            # 攻击 vs 状态 → 攻击的应对状态效果
-            apply_counter_status(attacker, defender, atk_skill, def_skill)
-        elif atk_skill.category == SkillCategory.DEFENSE:
-            # 防御 vs 状态 → 状态的应对防御效果
-            if def_skill.counter_defense_enemy_def > 0:
-                attacker.def_mod -= def_skill.counter_defense_enemy_def
-
-    elif def_skill.category in (SkillCategory.PHYSICAL, SkillCategory.MAGICAL):
-        if atk_skill.category == SkillCategory.STATUS:
-            # 状态 vs 攻击 → 状态无特殊效果
-            pass
-
-    return damage
-
 
 def _check_fainted_and_deduct_mp(state: BattleState) -> None:
     """检查倒地精灵，扣除MP"""
@@ -422,14 +232,33 @@ def _check_fainted_and_deduct_mp(state: BattleState) -> None:
         state.mp_b -= 1
 
 
+def _apply_moisture_mark(state: BattleState) -> None:
+    """
+    湿润印记效果：每层为己方全队所有技能能耗永久 -1。
+    每回合行动前触发一次；印记清零后不再叠加，效果永久保留在技能能耗上。
+    """
+    for team, marks in [("a", state.marks_a), ("b", state.marks_b)]:
+        stacks = marks.get("moisture_mark", 0)
+        if stacks <= 0:
+            continue
+        team_list = state.team_a if team == "a" else state.team_b
+        for p in team_list:
+            for s in p.skills:
+                s.energy_cost = max(0, s.energy_cost - stacks)
+        marks["moisture_mark"] = 0   # 消耗印记，效果已永久写入技能
+
+
 def execute_full_turn(state: BattleState, action_a: Action, action_b: Action,
                       switch_cb_a=None, switch_cb_b=None) -> None:
     """
     执行完整回合。
-    
+
     switch_cb_a/b: 被动换人回调 (state, team_list, alive_indices) -> int
       精灵倒下后让玩家/AI选择下一只上场精灵。
     """
+    # 湿润印记：回合开始时应用全队能耗减少
+    _apply_moisture_mark(state)
+
     p_a = state.team_a[state.current_a]
     p_b = state.team_b[state.current_b]
 
@@ -544,125 +373,24 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
         else:
             current.charging_skill_idx = -1
 
-    if current.energy < skill.energy_cost:
+    # 计算实际能耗（含动态减免，如毒液渗透）
+    actual_cost = skill.energy_cost
+    for tag in getattr(skill, "effects", []):
+        if tag.type == E.ENERGY_COST_DYNAMIC:
+            per = tag.params.get("per", "")
+            reduce = tag.params.get("reduce", 0)
+            if per == "enemy_poison":
+                refund = enemy.poison_stacks * reduce
+                actual_cost = max(0, actual_cost - refund)
+
+    if current.energy < actual_cost:
         current.gain_energy(5)
         return
-    current.energy -= skill.energy_cost
+    current.energy -= actual_cost
 
-    # ═══════════════════════════════════════
-    #  新引擎路径: 有 effects 的技能
-    # ═══════════════════════════════════════
-    if skill.effects:
-        _execute_new_engine(state, team, enemy_team, current, enemy, skill,
-                            action, enemy_action, team_list, idx)
-        return
-
-    # ═══════════════════════════════════════
-    #  旧引擎路径: 无 effects 的技能 (保持不变)
-    # ═══════════════════════════════════════
-
-    if skill.force_switch:
-        alive = [i for i, p in enumerate(team_list) if not p.is_fainted and i != idx]
-        if alive:
-            current.on_switch_out()
-            new_idx = random.choice(alive)
-            if team == "a":
-                state.current_a = new_idx
-            else:
-                state.current_b = new_idx
-        return
-
-    enemy_skill = None
-    if enemy_action[0] >= 0 and not enemy.is_fainted:
-        enemy_skill = enemy.skills[enemy_action[0]]
-
-    if skill.category == SkillCategory.DEFENSE:
-        current.apply_self_buff(skill)
-        if skill.self_heal_hp > 0:
-            heal = int(current.hp * skill.self_heal_hp)
-            current.current_hp = min(current.hp, current.current_hp + heal)
-        if skill.self_heal_energy > 0:
-            current.gain_energy(skill.self_heal_energy)
-        return
-
-    if skill.category == SkillCategory.STATUS:
-        current.apply_self_buff(skill)
-        enemy.apply_enemy_debuff(skill)
-        if skill.self_heal_hp > 0:
-            heal = int(current.hp * skill.self_heal_hp)
-            current.current_hp = min(current.hp, current.current_hp + heal)
-        if skill.self_heal_energy > 0:
-            current.gain_energy(skill.self_heal_energy)
-        if skill.steal_energy > 0:
-            current.gain_energy(skill.steal_energy)
-            enemy.energy = max(0, enemy.energy - skill.steal_energy)
-        if skill.enemy_lose_energy > 0:
-            enemy.energy = max(0, enemy.energy - skill.enemy_lose_energy)
-        if skill.poison_stacks > 0:
-            enemy.poison_stacks += skill.poison_stacks
-        if skill.burn_stacks > 0:
-            enemy.burn_stacks += skill.burn_stacks
-        if skill.freeze_stacks > 0:
-            enemy.freeze_stacks += skill.freeze_stacks
-        if skill.leech_stacks > 0:
-            enemy.leech_stacks += skill.leech_stacks
-        if skill.meteor_stacks > 0:
-            enemy.meteor_stacks += skill.meteor_stacks
-            if enemy.meteor_countdown <= 0:
-                enemy.meteor_countdown = 3
-        if skill.force_switch:
-            alive = [i for i, p in enumerate(team_list) if not p.is_fainted and i != idx]
-            if alive:
-                current.on_switch_out()
-                new_idx = random.choice(alive)
-                if team == "a":
-                    state.current_a = new_idx
-                else:
-                    state.current_b = new_idx
-        return
-
-    # 攻击技能（旧路径）
-    current.apply_self_buff(skill)
-    enemy.apply_enemy_debuff(skill)
-    if skill.poison_stacks > 0:
-        enemy.poison_stacks += skill.poison_stacks
-    if skill.burn_stacks > 0:
-        enemy.burn_stacks += skill.burn_stacks
-    if skill.freeze_stacks > 0:
-        enemy.freeze_stacks += skill.freeze_stacks
-    if skill.leech_stacks > 0:
-        enemy.leech_stacks += skill.leech_stacks
-    if skill.meteor_stacks > 0:
-        enemy.meteor_stacks += skill.meteor_stacks
-        if enemy.meteor_countdown <= 0:
-            enemy.meteor_countdown = 3
-    if skill.steal_energy > 0:
-        current.gain_energy(skill.steal_energy)
-        enemy.energy = max(0, enemy.energy - skill.steal_energy)
-    if skill.enemy_lose_energy > 0:
-        enemy.energy = max(0, enemy.energy - skill.enemy_lose_energy)
-    if skill.power <= 0 or enemy.is_fainted:
-        if skill.self_heal_hp > 0:
-            heal = int(current.hp * skill.self_heal_hp)
-            current.current_hp = min(current.hp, current.current_hp + heal)
-        if skill.self_heal_energy > 0:
-            current.gain_energy(skill.self_heal_energy)
-        return
-    damage = DamageCalculator.calculate(current, enemy, skill)
-    if enemy_skill and not enemy.is_fainted:
-        damage = resolve_counter(current, enemy, skill, enemy_skill, damage)
-    enemy.current_hp -= damage
-    if enemy.current_hp <= 0:
-        enemy.current_hp = 0
-        enemy.status = StatusType.FAINTED
-    if skill.life_drain > 0:
-        heal = int(damage * skill.life_drain)
-        current.current_hp = min(current.hp, current.current_hp + heal)
-    if skill.self_heal_hp > 0:
-        heal = int(current.hp * skill.self_heal_hp)
-        current.current_hp = min(current.hp, current.current_hp + heal)
-    if skill.self_heal_energy > 0:
-        current.gain_energy(skill.self_heal_energy)
+    # 所有技能走新引擎（效果由 EffectTag 驱动）
+    _execute_new_engine(state, team, enemy_team, current, enemy, skill,
+                        action, enemy_action, team_list, idx)
 
 
 def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
@@ -680,18 +408,6 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
     # 判断先后手
     is_first = _is_first_action(state, team, action, enemy_team, enemy_action)
 
-    # 能耗动态调整 (毒液渗透等)
-    energy_refund = 0
-    for tag in skill.effects:
-        if tag.type == E.ENERGY_COST_DYNAMIC:
-            per = tag.params.get("per", "")
-            reduce = tag.params.get("reduce", 0)
-            if per == "enemy_poison":
-                energy_refund = enemy.poison_stacks * reduce
-
-    if energy_refund > 0:
-        current.gain_energy(min(energy_refund, skill.energy_cost))
-
     # 执行主效果
     result = EffectExecutor.execute_skill(
         state, current, enemy, skill, skill.effects,
@@ -700,7 +416,15 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
 
     damage = result["damage"]
 
-    # 应对解析 (新引擎)
+    # 先检查敌方技能是否有防御减伤（防御/风墙/听桥/火焰护盾等）
+    # damage_reduction 先于应对效果结算
+    if enemy_skill and hasattr(enemy_skill, "effects") and enemy_skill.effects:
+        for e2 in enemy_skill.effects:
+            if e2.type == E.DAMAGE_REDUCTION and damage > 0:
+                pct = e2.params.get("pct", 0)
+                damage = int(damage * (1.0 - pct))
+
+    # 应对解析 (我方技能有 COUNTER_*，如毒液渗透/偷袭等)
     if enemy_skill and not enemy.is_fainted and result["counter_effects"]:
         for counter_tag in result["counter_effects"]:
             counter_result = EffectExecutor.execute_counter(
@@ -717,21 +441,15 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
             if counter_result.get("force_enemy_switch"):
                 result["force_enemy_switch"] = True
 
-    # 对方也有应对效果? (对方技能有 COUNTER_*, 且匹配我方技能类型)
+    # 对方技能的应对效果（对方防御/状态技能应对我方攻击）
+    # 传入减伤后的 damage 值（听桥需要用实际伤害反弹）
     if enemy_skill and hasattr(enemy_skill, "effects") and enemy_skill.effects:
         for etag in enemy_skill.effects:
             if etag.type in (E.COUNTER_ATTACK, E.COUNTER_STATUS, E.COUNTER_DEFENSE):
                 counter_result = EffectExecutor.execute_counter(
                     state, enemy, current, enemy_skill, etag,
-                    skill, damage, enemy_team,
+                    skill, damage, enemy_team,   # 传入已减伤后的 damage
                 )
-                # 防御减伤
-                if etag.type == E.COUNTER_ATTACK:
-                    # 查找对方技能是否有减伤
-                    for e2 in enemy_skill.effects:
-                        if e2.type == E.DAMAGE_REDUCTION:
-                            pct = e2.params.get("pct", 0)
-                            damage = int(damage * (1.0 - pct))
 
                 if counter_result.get("force_enemy_switch"):
                     # 吓退: 强制我方脱离

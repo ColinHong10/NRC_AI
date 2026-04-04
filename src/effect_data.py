@@ -1,11 +1,55 @@
 """
-效果数据 — 35个技能 + 12个特性的结构化 EffectTag 配置
+效果数据 — 技能 + 特性的结构化 EffectTag 配置
 
-每个技能/特性的效果描述已拆解为有序的 EffectTag 列表。
-只有在此配置中的技能才走新引擎，其余仍走旧的 parse_effect 正则。
+用工厂函数组合常见模式，新增技能通常只需 1-2 行。
+所有技能都在此配置，由 skill_db.load_skills 加载时注入 skill.effects。
 """
 
 from src.effect_models import E, EffectTag, Timing, AbilityEffect
+
+
+# ============================================================
+#  工厂函数 — 常见模式的快捷构造器
+# ============================================================
+
+def T(etype: E, _params: dict = None, **params) -> EffectTag:
+    """
+    快捷构造单个 EffectTag。
+    _params: 可选 dict，用于含 Python 保留字的键（如 'def'）
+    **params: 普通关键字参数
+    两者会合并，_params 优先。
+    """
+    merged = {**params, **(_params or {})}
+    return EffectTag(etype, merged if merged else {})
+
+
+def counter(ctype: E, *sub_effects: EffectTag) -> EffectTag:
+    """构造应对容器，sub_effects 为应对时触发的子效果列表。"""
+    return EffectTag(ctype, sub_effects=list(sub_effects))
+
+
+# 常用应对容器的别名
+def on_attack(*subs):  return counter(E.COUNTER_ATTACK,  *subs)
+def on_status(*subs):  return counter(E.COUNTER_STATUS,  *subs)
+def on_defense(*subs): return counter(E.COUNTER_DEFENSE, *subs)
+
+
+# ── 常见技能模式 ──
+
+def attack_on_status_interrupt() -> list:
+    """攻击 + 应对状态: 打断被应对技能（阻断/斩断/地刺）"""
+    return [T(E.DAMAGE), on_status(T(E.INTERRUPT))]
+
+
+def defense_counter(pct: float, *attack_subs: EffectTag) -> list:
+    """减伤X% + 应对攻击（防御/风墙/火焰护盾/吓退等）"""
+    tags = [T(E.DAMAGE_REDUCTION, pct=pct), on_attack(*attack_subs)]
+    return tags
+
+
+def attack_on_status_perm_cost(delta: int) -> list:
+    """攻击 + 应对状态: 能耗永久+delta（天洪/水刃）"""
+    return [T(E.DAMAGE), on_status(T(E.PERMANENT_MOD, target="cost", delta=delta))]
 
 
 # ============================================================
@@ -15,418 +59,243 @@ SKILL_EFFECTS = {
 
     # ──────────── A队 (毒队) 技能 ────────────
 
-    # 毒雾 (毒/状态/7/0): 将敌方所有增益，转化成中毒。
-    "毒雾": [
-        EffectTag(E.CONVERT_BUFF_TO_POISON),
-    ],
+    # 毒雾: 将敌方所有增益转化为中毒
+    "毒雾": [T(E.CONVERT_BUFF_TO_POISON)],
 
-    # 泡沫幻影 (水/状态/2/0): 减伤70%，应对攻击：自己脱离。
-    "泡沫幻影": [
-        EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.7}),
-        EffectTag(E.COUNTER_ATTACK, sub_effects=[
-            EffectTag(E.FORCE_SWITCH),
-        ]),
-    ],
+    # 泡沫幻影: 减伤70%，应对攻击: 自己脱离
+    "泡沫幻影": defense_counter(0.7, T(E.FORCE_SWITCH)),
 
-    # 疫病吐息 (毒/状态/3/0): 敌方获得1层中毒印记。
-    "疫病吐息": [
-        EffectTag(E.POISON_MARK, {"stacks": 1}),
-    ],
+    # 疫病吐息: 敌方获得1层中毒印记
+    "疫病吐息": [T(E.POISON_MARK, stacks=1)],
 
-    # 打湿 (水/变化/4/0): 自己获得1层湿润印记。
-    "打湿": [
-        EffectTag(E.MOISTURE_MARK, {"stacks": 1, "target": "self"}),
-    ],
+    # 打湿: 自己获得1层湿润印记
+    "打湿": [T(E.MOISTURE_MARK, stacks=1, target="self")],
 
-    # 嘲弄 (幽/状态/2/0): 自己获得魔攻+70%，若敌方本回合替换精灵，自己获得速度+70。
+    # 嘲弄: 自己魔攻+70%，若敌方本回合换人则速度+70
     "嘲弄": [
-        EffectTag(E.SELF_BUFF, {"spatk": 0.7}),
-        EffectTag(E.CONDITIONAL_BUFF, {
-            "condition": "enemy_switch",
-            "buff": {"speed": 0.7},
-        }),
+        T(E.SELF_BUFF, spatk=0.7),
+        T(E.CONDITIONAL_BUFF, condition="enemy_switch", buff={"speed": 0.7}),
     ],
 
-    # 恶意逃离 (恶/状态/1/0): 脱离，应对防御：额外使敌方攻击技能能耗+6。
+    # 恶意逃离: 脱离，应对防御: 敌方攻击技能能耗+6
     "恶意逃离": [
-        EffectTag(E.FORCE_SWITCH),
-        EffectTag(E.COUNTER_DEFENSE, sub_effects=[
-            EffectTag(E.ENEMY_ENERGY_COST_UP, {"amount": 6, "filter": "attack"}),
-        ]),
+        T(E.FORCE_SWITCH),
+        on_defense(T(E.ENEMY_ENERGY_COST_UP, amount=6, filter="attack")),
     ],
 
-    # 毒液渗透 (毒/魔法/5/120): 造成魔伤，敌方每有1层中毒效果，本技能能耗-1，敌方获得1层中毒。
+    # 毒液渗透: 动态能耗(-1/层中毒) + 造成魔伤 + 敌方1层中毒
     "毒液渗透": [
-        EffectTag(E.ENERGY_COST_DYNAMIC, {"per": "enemy_poison", "reduce": 1}),
-        EffectTag(E.DAMAGE),
-        EffectTag(E.POISON, {"stacks": 1}),
+        T(E.ENERGY_COST_DYNAMIC, per="enemy_poison", reduce=1),
+        T(E.DAMAGE),
+        T(E.POISON, stacks=1),
     ],
 
-    # 感染病 (毒/魔法/4/85): 造成魔伤，若击败敌方则将中毒转化为印记。
-    "感染病": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.CONVERT_POISON_TO_MARK, {"on": "kill"}),
-    ],
+    # 感染病: 造成魔伤，击败时将中毒转为印记
+    "感染病": [T(E.DAMAGE), T(E.CONVERT_POISON_TO_MARK, on="kill")],
 
-    # 阻断 (普通/魔法/2/70): 造成魔伤，应对状态：额外打断被应对技能。
-    "阻断": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.COUNTER_STATUS, sub_effects=[
-            EffectTag(E.INTERRUPT),
-        ]),
-    ],
+    # 阻断: 攻击 + 应对状态打断
+    "阻断": attack_on_status_interrupt(),
 
-    # 崩拳 (武/物理/2/60): 造成物伤，应对状态：自己获得物攻+100%。
-    "崩拳": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.COUNTER_STATUS, sub_effects=[
-            EffectTag(E.SELF_BUFF, {"atk": 1.0}),
-        ]),
-    ],
+    # 崩拳: 攻击 + 应对状态: 物攻+100%
+    "崩拳": [T(E.DAMAGE), on_status(T(E.SELF_BUFF, atk=1.0))],
 
-    # 毒囊 (毒/物理/2/20): 造成物伤，敌方获得2层中毒，应对状态：改为获得6层。
+    # 毒囊: 攻击 + 2层中毒，应对状态: 改为6层
     "毒囊": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.POISON, {"stacks": 2}),
-        EffectTag(E.COUNTER_STATUS, sub_effects=[
-            EffectTag(E.COUNTER_OVERRIDE, {"replace": "poison", "from": 2, "to": 6}),
-        ]),
+        T(E.DAMAGE),
+        T(E.POISON, stacks=2),
+        on_status(T(E.COUNTER_OVERRIDE, replace="poison", **{"from": 2, "to": 6})),
     ],
 
-    # 防御 (普通/状态/1/0): 减伤70%，应对攻击。
-    "防御": [
-        EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.7}),
-        EffectTag(E.COUNTER_ATTACK),
-    ],
+    # 防御: 减伤70% + 应对攻击（无子效果）
+    "防御": [T(E.DAMAGE_REDUCTION, pct=0.7), on_attack()],
 
-    # 甩水 (水/魔法/0/30): 造成魔伤，自己回复1能量。
-    "甩水": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.HEAL_ENERGY, {"amount": 1}),
-    ],
+    # 甩水: 造成魔伤 + 回复1能量
+    "甩水": [T(E.DAMAGE), T(E.HEAL_ENERGY, amount=1)],
 
-    # 天洪 (水/魔法/7/140): 造成魔伤，应对状态：本技能能耗永久-6。
-    "天洪": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.COUNTER_STATUS, sub_effects=[
-            EffectTag(E.PERMANENT_MOD, {"target": "cost", "delta": -6}),
-        ]),
-    ],
+    # 天洪: 攻击 + 应对状态: 能耗永久-6
+    "天洪": attack_on_status_perm_cost(-6),
 
-    # 以毒攻毒 (毒/状态/1/0): 敌方每有1层中毒，自己获得魔攻+30%。
-    "以毒攻毒": [
-        EffectTag(E.CONDITIONAL_BUFF, {
-            "condition": "per_enemy_poison",
-            "buff": {"spatk": 0.3},
-        }),
-    ],
+    # 以毒攻毒: 每层敌方中毒魔攻+30%
+    "以毒攻毒": [T(E.CONDITIONAL_BUFF, condition="per_enemy_poison", buff={"spatk": 0.3})],
 
     # ──────────── B队 (翼王队) 技能 ────────────
 
-    # 风墙 (翼/状态/2/0): 减伤50%，迅捷，应对攻击。
-    "风墙": [
-        EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.5}),
-        EffectTag(E.AGILITY),
-        EffectTag(E.COUNTER_ATTACK),
-    ],
+    # 风墙: 减伤50% + 迅捷 + 应对攻击
+    "风墙": [T(E.DAMAGE_REDUCTION, pct=0.5), T(E.AGILITY), on_attack()],
 
-    # 啮合传递 (机械/状态/1/0): 自己获得速度+80，
-    #   本技能位于1号位或3号位时额外获得物攻+100%，传动1。
+    # 啮合传递: 速度+80，1/3号位额外物攻+100%，传动1
     "啮合传递": [
-        EffectTag(E.SELF_BUFF, {"speed": 0.8}),
-        EffectTag(E.POSITION_BUFF, {
-            "positions": [0, 2],
-            "buff": {"atk": 1.0},
-        }),
-        EffectTag(E.DRIVE, {"value": 1}),
+        T(E.SELF_BUFF, speed=0.8),
+        T(E.POSITION_BUFF, positions=[0, 2], buff={"atk": 1.0}),
+        T(E.DRIVE, value=1),
     ],
 
-    # 双星 (幻/物理/3/100): 造成物伤。
-    "双星": [
-        EffectTag(E.DAMAGE),
-    ],
+    # 双星: 造成物伤
+    "双星": [T(E.DAMAGE)],
 
-    # 偷袭 (普通/物理/3/85): 造成物伤，应对状态：威力变为3倍。
+    # 偷袭: 攻击 + 应对状态: 威力3倍
     "偷袭": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.COUNTER_STATUS, sub_effects=[
-            EffectTag(E.POWER_DYNAMIC, {"condition": "counter", "multiplier": 3.0}),
-        ]),
+        T(E.DAMAGE),
+        on_status(T(E.POWER_DYNAMIC, condition="counter", multiplier=3.0)),
     ],
 
-    # 力量增效 (普通/状态/1/0): 自己获得物攻+100%。
-    "力量增效": [
-        EffectTag(E.SELF_BUFF, {"atk": 1.0}),
-    ],
+    # 力量增效: 自身物攻+100%
+    "力量增效": [T(E.SELF_BUFF, atk=1.0)],
 
-    # 水刃 (水/物理/4/115): 造成物伤，应对状态：本技能能耗永久-4。
-    "水刃": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.COUNTER_STATUS, sub_effects=[
-            EffectTag(E.PERMANENT_MOD, {"target": "cost", "delta": -4}),
-        ]),
-    ],
+    # 水刃: 攻击 + 应对状态: 能耗永久-4
+    "水刃": attack_on_status_perm_cost(-4),
 
-    # 斩断 (武/物理/2/70): 造成物伤，应对状态：额外打断被应对技能。
-    "斩断": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.COUNTER_STATUS, sub_effects=[
-            EffectTag(E.INTERRUPT),
-        ]),
-    ],
+    # 斩断: 攻击 + 应对状态: 打断
+    "斩断": attack_on_status_interrupt(),
 
-    # 听桥 (武/状态/4/0): 减伤60%，应对攻击：对敌方造成伤害，威力与被应对技能相等。
-    "听桥": [
-        EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.6}),
-        EffectTag(E.COUNTER_ATTACK, sub_effects=[
-            EffectTag(E.MIRROR_DAMAGE, {"source": "countered_skill"}),
-        ]),
-    ],
+    # 听桥: 减伤60% + 应对攻击: 反弹同等威力伤害
+    "听桥": defense_counter(0.6, T(E.MIRROR_DAMAGE, source="countered_skill")),
 
-    # 火焰护盾 (火/状态/2/0): 减伤70%，应对攻击：敌方获得4层灼烧。
-    "火焰护盾": [
-        EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.7}),
-        EffectTag(E.COUNTER_ATTACK, sub_effects=[
-            EffectTag(E.BURN, {"stacks": 4}),
-        ]),
-    ],
+    # 火焰护盾: 减伤70% + 应对攻击: 敌方4层灼烧
+    "火焰护盾": defense_counter(0.7, T(E.BURN, stacks=4)),
 
-    # 引燃 (火/状态/2/0): 敌方获得10层灼烧效果。
-    "引燃": [
-        EffectTag(E.BURN, {"stacks": 10}),
-    ],
+    # 引燃: 敌方10层灼烧
+    "引燃": [T(E.BURN, stacks=10)],
 
-    # 倾泻 (普通/魔法/3/60): 造成魔伤，若未被防御或应对则驱散双方所有印记。
-    "倾泻": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.DISPEL_MARKS, {"condition": "not_blocked"}),
-    ],
+    # 倾泻: 造成魔伤，未被防御时驱散双方印记
+    "倾泻": [T(E.DAMAGE), T(E.DISPEL_MARKS, condition="not_blocked")],
 
-    # 抽枝 (草/物理/4/85): 造成物伤，应对状态：自己回复50%生命和5能量。
+    # 抽枝: 攻击 + 应对状态: 回复50%HP + 5能量
     "抽枝": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.COUNTER_STATUS, sub_effects=[
-            EffectTag(E.HEAL_HP, {"pct": 0.5}),
-            EffectTag(E.HEAL_ENERGY, {"amount": 5}),
-        ]),
+        T(E.DAMAGE),
+        on_status(T(E.HEAL_HP, pct=0.5), T(E.HEAL_ENERGY, amount=5)),
     ],
 
-    # 水环 (水/状态/2/0): 减伤70%，应对攻击：自己获得全技能能耗-2。
-    "水环": [
-        EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.7}),
-        EffectTag(E.COUNTER_ATTACK, sub_effects=[
-            EffectTag(E.PASSIVE_ENERGY_REDUCE, {"reduce": 2, "range": "all"}),
-        ]),
-    ],
+    # 水环: 减伤70% + 应对攻击: 全技能能耗-2
+    "水环": defense_counter(0.7, T(E.PASSIVE_ENERGY_REDUCE, reduce=2, range="all")),
 
-    # 疾风连袭 (翼/状态/0/0): 释放自己释放过的迅捷技能，
-    #   其能耗之和的二分之一加至本技能能耗，每次使用后能耗+1。
+    # 疾风连袭: 重放迅捷技能 + 能耗分摊 + 每次使用能耗+1
     "疾风连袭": [
-        EffectTag(E.REPLAY_AGILITY),
-        EffectTag(E.AGILITY_COST_SHARE, {"divisor": 2}),
-        EffectTag(E.ENERGY_COST_ACCUMULATE, {"delta": 1}),
+        T(E.REPLAY_AGILITY),
+        T(E.AGILITY_COST_SHARE, divisor=2),
+        T(E.ENERGY_COST_ACCUMULATE, delta=1),
     ],
 
-    # 扇风 (翼/物理/3/70): 造成物伤，若先于敌方攻击，本次技能威力+50%。
-    "扇风": [
-        EffectTag(E.POWER_DYNAMIC, {"condition": "first_strike", "bonus_pct": 0.5}),
-        EffectTag(E.DAMAGE),
-    ],
+    # 扇风: 先手时威力+50% + 造成物伤
+    "扇风": [T(E.POWER_DYNAMIC, condition="first_strike", bonus_pct=0.5), T(E.DAMAGE)],
 
-    # 能量刃 (普通/物理/3/70): 造成物伤，每应对成功1次本技能威力永久+90。
+    # 能量刃: 造成物伤，每应对1次威力永久+90
     "能量刃": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.PERMANENT_MOD, {
-            "target": "power", "delta": 90,
-            "trigger": "per_counter",
-        }),
+        T(E.DAMAGE),
+        T(E.PERMANENT_MOD, target="power", delta=90, trigger="per_counter"),
     ],
 
-    # 轴承支撑 (机械/状态/3/0): 主动：本技能；被动：额外-1能耗，被动两侧技能能耗-1，传动。
+    # 轴承支撑: 被动自身能耗-1 + 两侧能耗-1 + 传动1
     "轴承支撑": [
-        EffectTag(E.PASSIVE_ENERGY_REDUCE, {"reduce": 1, "range": "self"}),
-        EffectTag(E.PASSIVE_ENERGY_REDUCE, {"reduce": 1, "range": "adjacent"}),
-        EffectTag(E.DRIVE, {"value": 1}),
+        T(E.PASSIVE_ENERGY_REDUCE, reduce=1, range="self"),
+        T(E.PASSIVE_ENERGY_REDUCE, reduce=1, range="adjacent"),
+        T(E.DRIVE, value=1),
     ],
 
-    # 齿轮扭矩 (机械/物理/3/60): 造成物伤，每变化1次位置本技能威力永久+20。
+    # 齿轮扭矩: 造成物伤，每次位置变化威力永久+20
     "齿轮扭矩": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.PERMANENT_MOD, {
-            "target": "power", "delta": 20,
-            "trigger": "per_position_change",
-        }),
+        T(E.DAMAGE),
+        T(E.PERMANENT_MOD, target="power", delta=20, trigger="per_position_change"),
     ],
 
-    # 地刺 (地/物理/3/95): 造成物伤，应对状态：额外打断被应对技能。
-    "地刺": [
-        EffectTag(E.DAMAGE),
-        EffectTag(E.COUNTER_STATUS, sub_effects=[
-            EffectTag(E.INTERRUPT),
-        ]),
-    ],
+    # 地刺: 攻击 + 应对状态: 打断
+    "地刺": attack_on_status_interrupt(),
 
-    # 吓退 (普通/状态/2/0): 减伤70%，应对攻击：敌方脱离。
-    "吓退": [
-        EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.7}),
-        EffectTag(E.COUNTER_ATTACK, sub_effects=[
-            EffectTag(E.FORCE_ENEMY_SWITCH),
-        ]),
-    ],
+    # 吓退: 减伤70% + 应对攻击: 敌方脱离
+    "吓退": defense_counter(0.7, T(E.FORCE_ENEMY_SWITCH)),
 }
 
 
 # ============================================================
 #  特性效果配置: Dict[特性名, List[AbilityEffect]]
 # ============================================================
+
+def AE(timing: Timing, effects: list, **filter_kw) -> AbilityEffect:
+    """快捷构造 AbilityEffect。filter_kw 作为 filter dict。"""
+    return AbilityEffect(timing=timing, effects=effects, filter=filter_kw if filter_kw else {})
+
+
 ABILITY_EFFECTS = {
 
-    # ── A队特性 ──
-
-    # 千棘盔 — 溶解扩散: 每携带1个毒系技能进入战斗，水系技能使敌方获得1层中毒。
+    # 千棘盔 — 溶解扩散
+    # 战斗开始时计算携带毒系技能数量；使用水系技能后敌方获得对应层数中毒
     "溶解扩散": [
-        AbilityEffect(
-            timing=Timing.ON_BATTLE_START,
-            effects=[],  # 计算毒系技能数量, 存入 ability_state
-            filter={"compute": "count_poison_skills"},
-        ),
-        AbilityEffect(
-            timing=Timing.ON_USE_SKILL,
-            effects=[
-                EffectTag(E.POISON, {"stacks_per_poison_skill": True}),
-            ],
-            filter={"element": "水"},
-        ),
+        AE(Timing.ON_BATTLE_START,
+           [T(E.ABILITY_COMPUTE, action="count_poison_skills")]),
+        AE(Timing.ON_USE_SKILL,
+           [T(E.POISON, stacks_per_poison_skill=True)],
+           element="水"),
     ],
 
-    # 影狸 — 下黑手: 敌方精灵离场后，更换入场的精灵获得5层中毒。
+    # 影狸 — 下黑手: 敌方换人后，新入场精灵获得5层中毒
     "下黑手": [
-        AbilityEffect(
-            timing=Timing.ON_ENEMY_SWITCH,
-            effects=[
-                EffectTag(E.POISON, {"stacks": 5, "target": "enemy_new"}),
-            ],
-        ),
+        AE(Timing.ON_ENEMY_SWITCH,
+           [T(E.POISON, stacks=5, target="enemy_new")]),
     ],
 
-    # 裘卡 — 蚀刻: 回合结束时，敌方每2层中毒转化为1层中毒印记。
+    # 裘卡 — 蚀刻: 回合结束时每2层中毒转1层印记
     "蚀刻": [
-        AbilityEffect(
-            timing=Timing.ON_TURN_END,
-            effects=[
-                EffectTag(E.CONVERT_POISON_TO_MARK, {
-                    "ratio": 2,  # 每2层中毒→1层印记
-                }),
-            ],
-        ),
+        AE(Timing.ON_TURN_END,
+           [T(E.CONVERT_POISON_TO_MARK, ratio=2)]),
     ],
 
-    # 琉璃水母 — 扩散侵蚀: 使用水系技能后，敌方获得中毒，获得层数等于中毒印记层数的2倍。
+    # 琉璃水母 — 扩散侵蚀: 使用水系技能后，敌方获得印记层数×2的中毒
     "扩散侵蚀": [
-        AbilityEffect(
-            timing=Timing.ON_USE_SKILL,
-            effects=[
-                EffectTag(E.POISON, {"stacks_per_mark": 2}),
-                # stacks = enemy_poison_mark_stacks * 2
-            ],
-            filter={"element": "水"},
-        ),
+        AE(Timing.ON_USE_SKILL,
+           [T(E.POISON, stacks_per_mark=2)],
+           element="水"),
     ],
 
-    # 迷迷箱怪 — 虚假宝箱: 自己力竭时，敌方获得攻防+20%。
+    # 迷迷箱怪 — 虚假宝箱: 力竭时敌方攻防+20%（invert=True表示给敌方加正向buff）
     "虚假宝箱": [
-        AbilityEffect(
-            timing=Timing.ON_FAINT,
-            effects=[
-                EffectTag(E.ENEMY_DEBUFF, {
-                    "atk": -0.2, "def": -0.2,
-                    "invert": True,  # 给敌方加正向buff而非debuff
-                }),
-            ],
-        ),
+        AE(Timing.ON_FAINT,
+           [T(E.ENEMY_DEBUFF, atk=-0.2, **{"def": -0.2}, invert=True)]),
     ],
 
-    # 海豹船长 — 身经百练: 己方精灵每应对1次，自己入场时水系和武系技能威力+20%。
+    # 海豹船长 — 身经百练: 己方每应对1次计数+1；入场时水系/武系技能威力×(1+计数×20%)
     "身经百练": [
-        AbilityEffect(
-            timing=Timing.ON_ALLY_COUNTER,
-            effects=[],  # 计数器+1, 实际效果在入场时应用
-            filter={"action": "increment_counter"},
-        ),
-        AbilityEffect(
-            timing=Timing.ON_ENTER,
-            effects=[
-                EffectTag(E.PERMANENT_MOD, {
-                    "target": "power_pct",
-                    "per_counter": 0.2,  # 每次应对+20%威力
-                    "skill_filter": {"element": ["水", "武"]},
-                }),
-            ],
-        ),
+        AE(Timing.ON_ALLY_COUNTER,
+           [T(E.ABILITY_INCREMENT_COUNTER)]),
+        AE(Timing.ON_ENTER, [
+            T(E.PERMANENT_MOD,
+              target="power_pct",
+              per_counter=0.2,
+              skill_filter={"element": ["水", "武"]}),
+        ]),
     ],
 
     # ── B队特性 ──
 
-    # 燃薪虫 — 煤渣草: 在场时，所有灼烧的衰减变为增长。
+    # 燃薪虫 — 煤渣草: 在场时灼烧不衰减反而增长
     "煤渣草": [
-        AbilityEffect(
-            timing=Timing.PASSIVE,
-            effects=[],
-            filter={"modify": "burn_no_decay"},
-            # 特殊处理: turn_end_effects 中灼烧不衰减反而增长
-        ),
+        AE(Timing.PASSIVE, [T(E.BURN_NO_DECAY)]),
     ],
 
-    # 圣羽翼王 — 飓风: 对本精灵的技能，若其他翼系精灵携带相同技能，则获得迅捷。
-    #   被敌方精灵击败时，自己额外损失1点魔力。
+    # 圣羽翼王 — 飓风: 与其他翼系共享技能加迅捷；被击败时己方额外-1MP
     "飓风": [
-        AbilityEffect(
-            timing=Timing.ON_BATTLE_START,
-            effects=[],
-            filter={"compute": "shared_wing_skills"},
-            # 计算哪些技能与其他翼系精灵共享, 给这些技能加迅捷
-        ),
-        AbilityEffect(
-            timing=Timing.ON_BE_KILLED,
-            effects=[
-                EffectTag(E.ENEMY_LOSE_ENERGY, {"amount": 1, "target": "self_mp"}),
-                # 特殊: 扣除己方MP而非能量
-            ],
-        ),
+        AE(Timing.ON_BATTLE_START,
+           [T(E.ABILITY_COMPUTE, action="shared_wing_skills")]),
+        AE(Timing.ON_BE_KILLED,
+           [T(E.ENEMY_LOSE_ENERGY, amount=1, target="self_mp")]),
     ],
 
-    # 翠顶夫人 — 洁癖: 离场后，自己的增益和减益会被更换入场的精灵继承。
+    # 翠顶夫人 — 洁癖: 离场时将自身增益传给下一只入场精灵
     "洁癖": [
-        AbilityEffect(
-            timing=Timing.ON_LEAVE,
-            effects=[],
-            filter={"action": "transfer_mods"},
-            # 特殊处理: on_switch_out 时不清除 mods, 而是传递给下一只
-        ),
+        AE(Timing.ON_LEAVE, [T(E.TRANSFER_MODS)]),
     ],
 
-    # 秩序鱿墨 — 绝对秩序: 受到非敌方系别的技能攻击时伤害-50%。
+    # 秩序鱿墨 — 绝对秩序: 受到非敌方系别技能攻击时伤害-50%
     "绝对秩序": [
-        AbilityEffect(
-            timing=Timing.ON_TAKE_HIT,
-            effects=[
-                EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.5}),
-            ],
-            filter={"condition": "skill_element_not_enemy_type"},
-            # 当攻击技能属性 ≠ 敌方精灵属性时, 减伤50%
-        ),
+        AE(Timing.ON_TAKE_HIT,
+           [T(E.DAMAGE_REDUCTION, pct=0.5)],
+           condition="skill_element_not_enemy_type"),
     ],
 
-    # 声波缇塔 — 向心力: 1号位和2号位技能获得传动1和威力+30。
+    # 声波缇塔 — 向心力: 1/2号位技能获得传动1和威力+30
     "向心力": [
-        AbilityEffect(
-            timing=Timing.PASSIVE,
-            effects=[
-                EffectTag(E.DRIVE, {"value": 1}),
-                EffectTag(E.PERMANENT_MOD, {"target": "power", "delta": 30}),
-            ],
-            filter={"positions": [0, 1]},
-            # 仅1号位和2号位技能
-        ),
+        AE(Timing.PASSIVE, [
+            T(E.DRIVE, value=1),
+            T(E.PERMANENT_MOD, target="power", delta=30),
+        ], positions=[0, 1]),
     ],
 }

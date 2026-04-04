@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>洛克王国 · 阵容搭配</title>
+<style>
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--bg4:#2d333b;
+  --border:#30363d;--accent:#58a6ff;--accentg:rgba(88,166,255,.3);
+  --green:#3fb950;--red:#f85149;--yellow:#d29922;--purple:#bc8cff;
+  --text:#e6edf3;--dim:#8b949e;--muted:#484f58;
+  --r:10px;--rs:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+
+/* ══ 顶栏 ══ */
+#topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;height:48px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+#topbar h1{font-size:15px;font-weight:700;color:var(--accent)}
+.topbar-right{display:flex;align-items:center;gap:12px}
+#btn-start{background:var(--accent);color:#0d1117;border:none;border-radius:var(--rs);padding:7px 22px;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .15s,transform .1s;display:flex;align-items:center;gap:6px}
+#btn-start:hover:not(:disabled){opacity:.88;transform:translateY(-1px)}
+#btn-start:disabled{opacity:.4;cursor:not-allowed}
+#team-count{font-size:12px;color:var(--dim)}
+
+/* ══ 主布局 ══ */
+#main{display:grid;grid-template-columns:1fr 340px;flex:1;overflow:hidden;gap:0}
+
+/* ══ 左：精灵搜索区 ══ */
+#left{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)}
+
+/* 搜索栏 */
+#search-bar{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0}
+#search-input{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:7px 12px;font-size:13px;color:var(--text);outline:none;transition:border-color .15s}
+#search-input:focus{border-color:var(--accent)}
+#search-input::placeholder{color:var(--muted)}
+
+/* 属性筛选 */
+#filter-bar{padding:8px 16px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:5px;flex-shrink:0}
+.filter-btn{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;font-weight:600;cursor:pointer;color:var(--dim);transition:all .15s}
+.filter-btn:hover,.filter-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(88,166,255,.1)}
+.filter-btn.active{font-weight:700}
+
+/* 精灵网格 */
+#pokemon-list{flex:1;overflow-y:auto;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;align-content:start}
+#pokemon-list::-webkit-scrollbar{width:4px}
+#pokemon-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+.poke-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:10px;cursor:pointer;transition:all .15s;position:relative}
+.poke-card:hover{background:var(--bg4);border-color:var(--accent);transform:translateY(-1px)}
+.poke-card.in-team{border-color:var(--green);background:rgba(63,185,80,.07)}
+.poke-card.in-team::after{content:'✓';position:absolute;top:4px;right:6px;color:var(--green);font-weight:700;font-size:12px}
+.poke-card .pname{font-size:12px;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.poke-card .pmeta{font-size:9px;color:var(--dim);display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.poke-card .pbst{font-size:9px;color:var(--yellow);font-weight:600;margin-left:auto}
+
+/* ══ 右：阵容区 ══ */
+#right{display:flex;flex-direction:column;overflow:hidden;background:var(--bg2)}
+
+/* AI 选择 */
+#ai-selector{padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+#ai-selector label{font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:8px}
+#ai-btns{display:flex;gap:8px}
+.ai-btn{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:7px;font-size:11px;font-weight:600;cursor:pointer;color:var(--dim);transition:all .15s;text-align:center}
+.ai-btn:hover{border-color:var(--red);color:var(--red)}
+.ai-btn.selected{background:rgba(248,81,73,.1);border-color:var(--red);color:var(--red)}
+
+/* 阵容槽 */
+#team-slots{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+#team-slots::-webkit-scrollbar{width:3px}
+#team-slots::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+.team-slot{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:10px;min-height:64px;position:relative;transition:border-color .15s}
+.team-slot.filled{border-color:var(--accent)}
+.team-slot.empty{border-style:dashed;opacity:.5}
+.team-slot .slot-num{position:absolute;top:6px;left:8px;font-size:9px;color:var(--muted);font-weight:700}
+.team-slot .slot-remove{position:absolute;top:4px;right:6px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px}
+.team-slot .slot-remove:hover{color:var(--red)}
+.team-slot .slot-pname{font-size:12px;font-weight:700;color:var(--text);margin-left:20px;margin-bottom:4px}
+.team-slot .slot-type{font-size:9px;margin-left:20px;margin-bottom:6px}
+.slot-skills{display:flex;flex-wrap:wrap;gap:3px;margin-left:20px}
+.slot-skill-tag{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-size:9px;color:var(--dim);cursor:default}
+
+/* ══ 技能选择弹窗 ══ */
+#skill-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+#skill-modal-bg.open{display:flex}
+#skill-modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);width:560px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden}
+#skill-modal-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+#skill-modal-title{font-size:14px;font-weight:700}
+#skill-modal-close{background:none;border:none;color:var(--dim);cursor:pointer;font-size:18px;line-height:1}
+#skill-modal-close:hover{color:var(--text)}
+#skill-search{padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+#skill-search input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:6px 10px;font-size:12px;color:var(--text);outline:none}
+#skill-search input:focus{border-color:var(--accent)}
+#skill-selected-bar{padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0;min-height:36px}
+#skill-selected-bar .hint{font-size:10px;color:var(--dim);margin-bottom:4px}
+#skill-selected-tags{display:flex;flex-wrap:wrap;gap:4px}
+.sel-skill-tag{background:rgba(88,166,255,.15);border:1px solid rgba(88,166,255,.35);border-radius:3px;padding:2px 7px;font-size:10px;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:3px}
+.sel-skill-tag .rm{color:var(--red);font-size:11px;font-weight:700}
+#skill-list-wrap{flex:1;overflow-y:auto;padding:8px}
+#skill-list-wrap::-webkit-scrollbar{width:3px}
+#skill-list-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.skill-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--rs);cursor:pointer;transition:background .12s}
+.skill-row:hover{background:var(--bg4)}
+.skill-row.selected-skill{background:rgba(88,166,255,.1)}
+.skill-row .sr-name{font-size:12px;font-weight:600;min-width:80px}
+.skill-row .sr-type{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600}
+.skill-row .sr-cat{font-size:9px;color:var(--dim);min-width:24px}
+.skill-row .sr-cost{font-size:10px;font-weight:700;color:var(--accent);min-width:28px}
+.skill-row .sr-power{font-size:10px;color:var(--yellow);min-width:32px}
+.skill-row .sr-desc{font-size:9px;color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#skill-modal-footer{padding:10px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+#skill-confirm{background:var(--accent);color:#0d1117;border:none;border-radius:var(--rs);padding:7px 20px;font-size:12px;font-weight:700;cursor:pointer}
+#skill-confirm:disabled{opacity:.4;cursor:not-allowed}
+#skill-confirm:hover:not(:disabled){opacity:.88}
+#skill-count-hint{font-size:11px;color:var(--dim)}
+
+/* 类型色 */
+.t-normal{background:#9ca3af;color:#111}.t-fire{background:#ef4444}.t-water{background:#3b82f6}
+.t-electric{background:#eab308;color:#111}.t-grass{background:#22c55e;color:#111}
+.t-ice{background:#67e8f9;color:#111}.t-fighting,.t-武{background:#c2410c}
+.t-poison,.t-毒{background:#a855f7}.t-ground,.t-地{background:#d97706}
+.t-flying,.t-翼{background:#a78bfa}.t-psychic,.t-幻{background:#ec4899}
+.t-bug,.t-虫{background:#84cc16;color:#111}.t-rock,.t-岩{background:#78716c}
+.t-ghost,.t-幽{background:#6366f1}.t-dragon,.t-龙{background:#1d4ed8}
+.t-dark,.t-恶{background:#374151}.t-steel,.t-机械{background:#94a3b8;color:#111}
+.t-fairy,.t-萌{background:#f472b6;color:#111}.t-光{background:#fbbf24;color:#111}
+
+/* 验证提示 */
+#validate-hint{font-size:11px;color:var(--red);min-height:16px;padding:0 16px 8px}
+
+/* loading */
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:200;flex-direction:column;gap:12px}
+#loading.hide{display:none}
+#loading .sp{width:32px;height:32px;border:3px solid rgba(88,166,255,.2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+#loading p{font-size:13px;color:var(--dim)}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- 全屏加载 -->
+<div id="loading">
+  <div class="sp"></div>
+  <p>加载精灵数据…</p>
+</div>
+
+<!-- 顶栏 -->
+<div id="topbar">
+  <h1>🐾 洛克王国 · 阵容搭配</h1>
+  <div class="topbar-right">
+    <span id="team-count">已选 0 / 6 只</span>
+    <button id="btn-start" disabled onclick="goToBattle()">⚔️ 开始战斗</button>
+  </div>
+</div>
+
+<!-- 主体 -->
+<div id="main">
+
+  <!-- 左：精灵搜索 -->
+  <div id="left">
+    <div id="search-bar">
+      <input id="search-input" type="text" placeholder="搜索精灵名称、属性或特性… (输入任意关键词)" autocomplete="off">
+      <span id="poke-list-count" style="font-size:10px;color:var(--muted);white-space:nowrap"></span>
+    </div>
+    <div id="filter-bar">
+      <button class="filter-btn active" data-el="">全部</button>
+      <button class="filter-btn" data-el="火">🔥火</button>
+      <button class="filter-btn" data-el="水">💧水</button>
+      <button class="filter-btn" data-el="草">🌿草</button>
+      <button class="filter-btn" data-el="电">⚡电</button>
+      <button class="filter-btn" data-el="冰">❄冰</button>
+      <button class="filter-btn" data-el="毒">☠毒</button>
+      <button class="filter-btn" data-el="地">🪨地</button>
+      <button class="filter-btn" data-el="翼">🦅翼</button>
+      <button class="filter-btn" data-el="幻">🔮幻</button>
+      <button class="filter-btn" data-el="幽">👻幽</button>
+      <button class="filter-btn" data-el="武">👊武</button>
+      <button class="filter-btn" data-el="恶">🌑恶</button>
+      <button class="filter-btn" data-el="萌">🌸萌</button>
+      <button class="filter-btn" data-el="机械">⚙机械</button>
+      <button class="filter-btn" data-el="龙">🐉龙</button>
+      <button class="filter-btn" data-el="虫">🐛虫</button>
+      <button class="filter-btn" data-el="光">✨光</button>
+      <button class="filter-btn" data-el="普通">普通</button>
+    </div>
+    <div id="pokemon-list"></div>
+  </div>
+
+  <!-- 右：阵容 -->
+  <div id="right">
+    <!-- AI 选择 -->
+    <div id="ai-selector">
+      <label>对手 AI 阵容</label>
+      <div id="ai-btns">
+        <button class="ai-btn" data-ai="toxic" onclick="selectAI('toxic', this)">☠ 毒队</button>
+        <button class="ai-btn selected" data-ai="wing" onclick="selectAI('wing', this)">🦅 翼王队</button>
+      </div>
+    </div>
+
+    <!-- 阵容槽 -->
+    <div id="team-slots">
+      <!-- 动态生成 6 个槽 -->
+    </div>
+    <div id="validate-hint"></div>
+  </div>
+
+</div>
+
+<!-- 技能选择弹窗 -->
+<div id="skill-modal-bg">
+  <div id="skill-modal">
+    <div id="skill-modal-header">
+      <span id="skill-modal-title">选择技能</span>
+      <button id="skill-modal-close" onclick="closeSkillModal()">✕</button>
+    </div>
+    <div id="skill-search">
+      <input type="text" id="skill-search-input" placeholder="搜索技能名称或描述…" autocomplete="off">
+    </div>
+    <div id="skill-selected-bar">
+      <div class="hint">已选技能（最多4个）：</div>
+      <div id="skill-selected-tags"></div>
+    </div>
+    <div id="skill-list-wrap">
+      <div id="skill-list"></div>
+    </div>
+    <div id="skill-modal-footer">
+      <span id="skill-count-hint">0 / 4 个技能</span>
+      <button id="skill-confirm" onclick="confirmSkills()" disabled>确认配置</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════
+// 状态
+// ══════════════════════════════
+let allPokemon = [];       // 全量精灵数据
+let filteredPokemon = [];  // 当前筛选后的
+let team = new Array(6).fill(null);   // [{name, element, ability, bst, skills:[...]}, ...]
+let selectedAI = 'wing';
+let currentFilterEl = '';
+let currentQuery = '';
+
+// 技能弹窗状态
+let modalSlotIdx = -1;     // 当前编辑的槽位
+let allSkills = [];        // 当前精灵的全部技能
+let selectedSkills = [];   // 已选技能名列表（最多4个）
+
+// ══════════════════════════════
+// 初始化
+// ══════════════════════════════
+async function init() {
+  try {
+    const res = await fetch('/api/pokemon/list?q=');
+    allPokemon = await res.json();
+    filteredPokemon = allPokemon.slice(0, 80);
+    renderPokemonList();
+    renderTeamSlots();
+    document.getElementById('loading').classList.add('hide');
+  } catch(e) {
+    document.querySelector('#loading p').textContent = '加载失败，请刷新';
+  }
+}
+
+// ══════════════════════════════
+// 精灵列表（本地过滤，最多显示120条）
+// ══════════════════════════════
+function renderPokemonList() {
+  const container = document.getElementById('pokemon-list');
+  container.innerHTML = '';
+
+  const teamNames = new Set(team.filter(Boolean).map(t => t.name));
+  const q = currentQuery.trim();
+  const el = currentFilterEl;
+
+  let list = allPokemon;
+  if (q) {
+    const lower = q.toLowerCase();
+    list = list.filter(p =>
+      p.name.toLowerCase().includes(lower) ||
+      p.element.includes(q) ||
+      (p.ability||'').includes(q)
+    );
+  }
+  if (el) list = list.filter(p => p.element === el);
+
+  // 搜索时显示全部匹配；空搜索显示前80
+  filteredPokemon = (q || el) ? list : list.slice(0, 80);
+
+  const countEl = document.getElementById('poke-list-count');
+  if (countEl) countEl.textContent = `显示 ${filteredPokemon.length} / ${allPokemon.length} 只`;
+
+  filteredPokemon.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'poke-card' + (teamNames.has(p.name) ? ' in-team' : '');
+    const elClass = `t-${p.element}`;
+    div.innerHTML = `
+      <div class="pname">${p.name}</div>
+      <div class="pmeta">
+        <span class="sr-type ${elClass}" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600">${p.element}</span>
+        <span style="font-size:9px;color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.ability || '—'}</span>
+        <span class="pbst">BST${p.base_total}</span>
+      </div>`;
+    div.onclick = () => addPokemon(p);
+    container.appendChild(div);
+  });
+
+  if (filteredPokemon.length === 0) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">没有找到匹配的精灵</div>';
+  }
+}
+
+// ══════════════════════════════
+// 添加精灵到阵容
+// ══════════════════════════════
+function addPokemon(p) {
+  // 是否已在队中
+  if (team.filter(Boolean).some(t => t.name === p.name)) {
+    showHint('该精灵已在阵容中！');
+    return;
+  }
+  // 找空槽
+  const emptyIdx = team.findIndex(t => t === null);
+  if (emptyIdx === -1) {
+    showHint('阵容已满（6只），请先移除一只！');
+    return;
+  }
+
+  // 先放入，技能待配
+  team[emptyIdx] = { name: p.name, element: p.element, ability: p.ability, bst: p.base_total, skills: [] };
+  renderTeamSlots();
+  renderPokemonList();
+  updateStartBtn();
+
+  // 立刻打开技能配置弹窗
+  openSkillModal(emptyIdx);
+}
+
+// ══════════════════════════════
+// 阵容槽渲染
+// ══════════════════════════════
+function renderTeamSlots() {
+  const container = document.getElementById('team-slots');
+  container.innerHTML = '';
+  for (let i = 0; i < 6; i++) {
+    const t = team[i];
+    const div = document.createElement('div');
+    div.className = 'team-slot ' + (t ? 'filled' : 'empty');
+    if (!t) {
+      div.innerHTML = `<span class="slot-num">${i+1}</span><span style="font-size:11px;color:var(--muted);padding-left:20px">点击精灵添加</span>`;
+    } else {
+      const elClass = `t-${t.element}`;
+      const skillsHtml = t.skills.length > 0
+        ? t.skills.map(s => `<span class="slot-skill-tag">${s}</span>`).join('')
+        : `<span style="font-size:9px;color:var(--red)">⚠ 未配置技能</span>`;
+      div.innerHTML = `
+        <span class="slot-num">${i+1}</span>
+        <button class="slot-remove" onclick="removePokemon(${i})" title="移除">✕</button>
+        <div class="slot-pname">${t.name}</div>
+        <div class="slot-type">
+          <span class="sr-type ${elClass}" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600">${t.element}</span>
+          <span style="font-size:9px;color:var(--dim);margin-left:4px">${t.ability ? t.ability.split(':')[0] : '—'}</span>
+          <button onclick="openSkillModal(${i})" style="background:none;border:1px solid var(--border);border-radius:3px;padding:1px 6px;font-size:9px;color:var(--accent);cursor:pointer;margin-left:6px">编辑技能</button>
+        </div>
+        <div class="slot-skills">${skillsHtml}</div>`;
+    }
+    container.appendChild(div);
+  }
+
+  const count = team.filter(Boolean).length;
+  document.getElementById('team-count').textContent = `已选 ${count} / 6 只`;
+}
+
+function removePokemon(idx) {
+  team[idx] = null;
+  // 把后面的往前移
+  const newTeam = team.filter(Boolean);
+  for (let i = 0; i < 6; i++) team[i] = newTeam[i] || null;
+  renderTeamSlots();
+  renderPokemonList();
+  updateStartBtn();
+}
+
+// ══════════════════════════════
+// 技能弹窗
+// ══════════════════════════════
+async function openSkillModal(slotIdx) {
+  const t = team[slotIdx];
+  if (!t) return;
+  modalSlotIdx = slotIdx;
+  selectedSkills = [...(t.skills || [])];
+
+  document.getElementById('skill-modal-title').textContent = `配置技能 — ${t.name}`;
+  document.getElementById('skill-search-input').value = '';
+  document.getElementById('skill-modal-bg').classList.add('open');
+
+  // 加载技能
+  allSkills = [];
+  document.getElementById('skill-list').innerHTML = '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">加载中…</div>';
+  try {
+    const res = await fetch(`/api/pokemon/skills?name=${encodeURIComponent(t.name)}`);
+    allSkills = await res.json();
+    renderSkillList('');
+    renderSelectedSkills();
+  } catch(e) {
+    document.getElementById('skill-list').innerHTML = '<div style="color:var(--red);padding:16px">加载技能失败</div>';
+  }
+}
+
+function closeSkillModal() {
+  document.getElementById('skill-modal-bg').classList.remove('open');
+  modalSlotIdx = -1;
+  allSkills = [];
+  selectedSkills = [];
+}
+
+function renderSkillList(q) {
+  const list = document.getElementById('skill-list');
+  list.innerHTML = '';
+  const lower = q.trim().toLowerCase();
+  let skills = allSkills;
+  if (lower) skills = skills.filter(s => s.name.includes(q) || (s.description||'').includes(q));
+
+  const CAT_ICON = {'物理':'⚔','魔法':'✨','防御':'🛡','状态':'🔀'};
+
+  skills.slice(0, 100).forEach(s => {
+    const div = document.createElement('div');
+    const isSelected = selectedSkills.includes(s.name);
+    div.className = 'skill-row' + (isSelected ? ' selected-skill' : '');
+    const elClass = `t-${s.element}`;
+    div.innerHTML = `
+      <span class="sr-name">${s.name}</span>
+      <span class="sr-type ${elClass}" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600">${s.element}</span>
+      <span class="sr-cat">${CAT_ICON[s.category]||''}</span>
+      <span class="sr-cost">⚡${s.energy_cost}</span>
+      <span class="sr-power">${s.power > 0 ? '威'+s.power : '—'}</span>
+      <span class="sr-desc">${s.description || ''}</span>`;
+    div.onclick = () => toggleSkill(s.name);
+    list.appendChild(div);
+  });
+
+  if (skills.length === 0) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">没有匹配的技能</div>';
+  }
+}
+
+function toggleSkill(name) {
+  const idx = selectedSkills.indexOf(name);
+  if (idx >= 0) {
+    selectedSkills.splice(idx, 1);
+  } else {
+    if (selectedSkills.length >= 4) {
+      // 替换最后一个
+      selectedSkills[3] = name;
+    } else {
+      selectedSkills.push(name);
+    }
+  }
+  renderSelectedSkills();
+  renderSkillList(document.getElementById('skill-search-input').value);
+  updateSkillConfirmBtn();
+}
+
+function renderSelectedSkills() {
+  const bar = document.getElementById('skill-selected-tags');
+  bar.innerHTML = '';
+  selectedSkills.forEach(name => {
+    const sp = document.createElement('span');
+    sp.className = 'sel-skill-tag';
+    sp.innerHTML = `${name} <span class="rm" onclick="toggleSkill('${name}')">✕</span>`;
+    bar.appendChild(sp);
+  });
+  document.getElementById('skill-count-hint').textContent = `${selectedSkills.length} / 4 个技能`;
+  updateSkillConfirmBtn();
+}
+
+function updateSkillConfirmBtn() {
+  document.getElementById('skill-confirm').disabled = selectedSkills.length < 1;
+}
+
+function confirmSkills() {
+  if (modalSlotIdx < 0 || !team[modalSlotIdx]) return;
+  team[modalSlotIdx].skills = [...selectedSkills];
+  renderTeamSlots();
+  updateStartBtn();
+  closeSkillModal();
+}
+
+// ══════════════════════════════
+// AI 选择
+// ══════════════════════════════
+function selectAI(key, btn) {
+  selectedAI = key;
+  document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+// ══════════════════════════════
+// 验证 & 启动
+// ══════════════════════════════
+function validate() {
+  const filled = team.filter(Boolean);
+  if (filled.length < 6) return `还需添加 ${6 - filled.length} 只精灵`;
+  const withoutSkills = filled.filter(t => t.skills.length < 1);
+  if (withoutSkills.length > 0) return `${withoutSkills.map(t=>t.name).join('、')} 未配置技能`;
+  const names = filled.map(t => t.name);
+  const dup = names.filter((n, i) => names.indexOf(n) !== i);
+  if (dup.length > 0) return `精灵重复：${[...new Set(dup)].join('、')}`;
+  return null;
+}
+
+function updateStartBtn() {
+  const err = validate();
+  document.getElementById('btn-start').disabled = !!err;
+  document.getElementById('validate-hint').textContent = err || '';
+}
+
+function showHint(msg) {
+  document.getElementById('validate-hint').textContent = msg;
+  setTimeout(() => updateStartBtn(), 2000);
+}
+
+function goToBattle() {
+  const err = validate();
+  if (err) { showHint(err); return; }
+  const teamData = team.filter(Boolean).map(t => ({ name: t.name, skills: t.skills }));
+  // 将阵容数据存入 sessionStorage，传给战斗页面
+  sessionStorage.setItem('playerTeam', JSON.stringify(teamData));
+  sessionStorage.setItem('aiTeam', selectedAI);
+  window.location.href = '/battle';
+}
+
+// ══════════════════════════════
+// 搜索 & 筛选事件
+// ══════════════════════════════
+document.getElementById('search-input').addEventListener('input', function() {
+  currentQuery = this.value;
+  renderPokemonList();
+});
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    currentFilterEl = this.dataset.el;
+    renderPokemonList();
+  });
+});
+
+document.getElementById('skill-search-input').addEventListener('input', function() {
+  renderSkillList(this.value);
+});
+
+// 点击背景关闭弹窗
+document.getElementById('skill-modal-bg').addEventListener('click', function(e) {
+  if (e.target === this) closeSkillModal();
+});
+
+// ══════════════════════════════
+// 启动
+// ══════════════════════════════
+init();
+</script>
+</body>
+</html>
