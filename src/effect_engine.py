@@ -151,6 +151,16 @@ def _clear_debuffs(pokemon: "Pokemon") -> None:
     pokemon.priority_stage = max(0, pokemon.priority_stage)
 
 
+def _ability_name(pokemon: "Pokemon") -> str:
+    if not getattr(pokemon, "ability", ""):
+        return ""
+    return pokemon.ability.split(":")[0].split("（")[0].strip()
+
+
+def _adjust_cost_delta(pokemon: "Pokemon", delta: int) -> int:
+    return -delta if _ability_name(pokemon) == "对流" else delta
+
+
 def _apply_permanent_mod(user: "Pokemon", skill: "Skill", params: Dict) -> None:
     """应用永久修改（能耗/威力）。per_counter 由 execute_counter 单独调用本函数。"""
     target = params.get("target", "")
@@ -162,7 +172,7 @@ def _apply_permanent_mod(user: "Pokemon", skill: "Skill", params: Dict) -> None:
         return
 
     if target == "cost":
-        skill.energy_cost = max(0, skill.energy_cost + delta)
+        skill.energy_cost = max(0, skill.energy_cost + _adjust_cost_delta(user, delta))
     elif target == "power":
         skill.power = max(0, skill.power + delta)
 
@@ -429,7 +439,7 @@ def _h_skill_mod(tag: EffectTag, ctx: Ctx) -> None:
     elif stat == "power_pct":
         target.skill_power_pct_mod += value
     elif stat == "cost":
-        target.skill_cost_mod += int(value)
+        target.skill_cost_mod += _adjust_cost_delta(target, int(value))
     elif stat == "hit_count":
         target.hit_count_mod += int(value)
     elif stat == "priority":
@@ -486,7 +496,7 @@ def _h_agility_cost_share(tag: EffectTag, ctx: Ctx) -> None:
 
 def _h_energy_cost_accumulate(tag: EffectTag, ctx: Ctx) -> None:
     delta = tag.params.get("delta", 1)
-    ctx.skill.energy_cost += delta
+    ctx.skill.energy_cost = max(0, ctx.skill.energy_cost + _adjust_cost_delta(ctx.user, delta))
 
 
 def _h_weather(tag: EffectTag, ctx: Ctx) -> None:
@@ -550,9 +560,9 @@ def _h_enemy_energy_cost_up(tag: EffectTag, ctx: Ctx) -> None:
     filt = tag.params.get("filter", "all")
     for s in ctx.target.skills:
         if filt == "attack" and s.category in (SC.PHYSICAL, SC.MAGICAL):
-            s.energy_cost += amount
+            s.energy_cost = max(0, s.energy_cost + _adjust_cost_delta(ctx.target, amount))
         elif filt == "all":
-            s.energy_cost += amount
+            s.energy_cost = max(0, s.energy_cost + _adjust_cost_delta(ctx.target, amount))
 
 
 def _h_mirror_damage(tag: EffectTag, ctx: Ctx) -> None:
@@ -585,7 +595,7 @@ def _h_passive_energy_reduce_water_ring(tag: EffectTag, ctx: Ctx) -> None:
     rng = tag.params.get("range", "all")
     if rng == "all":
         for s in ctx.user.skills:
-            s.energy_cost = max(0, s.energy_cost - reduce)
+            s.energy_cost = max(0, s.energy_cost + _adjust_cost_delta(ctx.user, -reduce))
 
 
 def _h_permanent_mod_ability(tag: EffectTag, ctx: Ctx) -> None:
@@ -979,12 +989,16 @@ class EffectExecutor:
                 reduce = tag.params.get("reduce", 0)
                 rng = tag.params.get("range", "self")
                 if rng == "self":
-                    target_skill.energy_cost = max(0, target_skill.energy_cost - reduce)
+                    target_skill.energy_cost = max(
+                        0,
+                        target_skill.energy_cost + _adjust_cost_delta(user, -reduce),
+                    )
                 elif rng == "adjacent":
                     for offset in [-1, 1]:
                         adj_idx = (target_idx + offset) % n_skills
                         user.skills[adj_idx].energy_cost = max(
-                            0, user.skills[adj_idx].energy_cost - reduce
+                            0,
+                            user.skills[adj_idx].energy_cost + _adjust_cost_delta(user, -reduce),
                         )
             elif tag.type == E.PERMANENT_MOD:
                 if tag.params.get("trigger") == "per_position_change":

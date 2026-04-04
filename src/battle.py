@@ -14,7 +14,143 @@ from src.models import (
 )
 from src.skill_db import get_skill
 from src.effect_models import E, Timing
-from src.effect_engine import EffectExecutor
+from src.effect_engine import EffectExecutor, _apply_permanent_mod
+
+
+def _ability_name(pokemon: Pokemon) -> str:
+    if not pokemon.ability:
+        return ""
+    return pokemon.ability.split(":")[0].split("（")[0].strip()
+
+
+def _has_ko_threat(attacker: Pokemon, defender: Pokemon) -> bool:
+    for idx, skill in enumerate(attacker.skills):
+        if skill.power <= 0:
+            continue
+        if attacker.energy < skill.energy_cost:
+            continue
+        if attacker.cooldowns.get(idx, 0) > 0:
+            continue
+        damage = DamageCalculator.calculate(attacker, defender, skill)
+        if damage >= defender.current_hp:
+            return True
+    return False
+
+
+def _apply_turn_start_ability_logic(state: BattleState) -> None:
+    pairs = [
+        (state.team_a[state.current_a], state.team_b[state.current_b]),
+        (state.team_b[state.current_b], state.team_a[state.current_a]),
+    ]
+    for current, enemy in pairs:
+        if current.is_fainted:
+            continue
+        current.ability_state.pop("threat_speed_bonus_active", None)
+        current.ability_state.pop("force_switch_after_action", None)
+        name = _ability_name(current)
+        if name not in {"预警", "哨兵"}:
+            continue
+        if _has_ko_threat(enemy, current):
+            current.speed_mod += 0.5
+            current.ability_state["threat_speed_bonus_active"] = True
+            if name == "哨兵":
+                current.ability_state["force_switch_after_action"] = True
+
+
+def _clear_turn_temporary_ability_logic(state: BattleState) -> None:
+    for pokemon in state.team_a + state.team_b:
+        if pokemon.ability_state.pop("threat_speed_bonus_active", None):
+            if pokemon.speed_mod >= 0.5:
+                pokemon.speed_mod -= 0.5
+        pokemon.ability_state.pop("force_switch_after_action", None)
+
+
+def _transfer_pokemon_state(source: Pokemon, target: Pokemon) -> None:
+    target.atk_mod = source.atk_mod
+    target.def_mod = source.def_mod
+    target.spatk_mod = source.spatk_mod
+    target.spdef_mod = source.spdef_mod
+    target.speed_mod = source.speed_mod
+    target.life_drain_mod = source.life_drain_mod
+    target.skill_power_bonus = source.skill_power_bonus
+    target.skill_power_pct_mod = source.skill_power_pct_mod
+    target.skill_cost_mod = source.skill_cost_mod
+    target.hit_count_mod = source.hit_count_mod
+    target.priority_stage = source.priority_stage
+    target.next_attack_power_bonus = source.next_attack_power_bonus
+    target.next_attack_power_pct = source.next_attack_power_pct
+    target.poison_stacks = source.poison_stacks
+    target.burn_stacks = source.burn_stacks
+    target.freeze_stacks = source.freeze_stacks
+    target.leech_stacks = source.leech_stacks
+    target.frostbite_damage = source.frostbite_damage
+    if "cute_mark" in source.ability_state:
+        target.ability_state["cute_mark"] = source.ability_state["cute_mark"]
+
+
+def _transform_to_guard_queen(pokemon: Pokemon) -> None:
+    from src.pokemon_db import get_pokemon
+
+    if "棋绮后" in pokemon.name:
+        return
+    target_name = "棋绮后（白子）" if "白子" in pokemon.name else "棋绮后（黑子）"
+    data = get_pokemon(target_name)
+    if not data:
+        return
+    pokemon.name = target_name
+    pokemon.hp = int(data["生命值"])
+    pokemon.attack = int(data["物攻"])
+    pokemon.sp_attack = int(data["魔攻"])
+    pokemon.defense = int(data["物防"])
+    pokemon.sp_defense = int(data["魔防"])
+    pokemon.speed = int(data["速度"])
+    pokemon.current_hp = pokemon.hp
+    pokemon.energy = 10
+    pokemon.status = StatusType.NORMAL
+    pokemon.poison_stacks = 0
+    pokemon.burn_stacks = 0
+    pokemon.freeze_stacks = 0
+    pokemon.leech_stacks = 0
+    pokemon.frostbite_damage = 0
+    pokemon.reset_mods()
+
+
+def _handle_counter_success_ability(
+    state: BattleState, pokemon: Pokemon, skill: Skill, defer_transform: bool = False
+) -> None:
+    if _ability_name(pokemon) != "保卫" or skill.category != SkillCategory.DEFENSE:
+        return
+    if pokemon.ability_state.get("guard_counter_turn") == state.turn:
+        return
+    pokemon.ability_state["guard_counter_turn"] = state.turn
+    count = pokemon.ability_state.get("guard_counters", 0) + 1
+    pokemon.ability_state["guard_counters"] = count
+    if count >= 2:
+        pokemon.ability_state["guard_counters"] = 0
+        if defer_transform:
+            pokemon.ability_state["guard_transform_pending"] = True
+        else:
+            _transform_to_guard_queen(pokemon)
+
+
+def _process_revive_timers(state: BattleState) -> None:
+    for pokemon in state.team_a + state.team_b:
+        turns_left = pokemon.ability_state.get("undying_revive_in")
+        if turns_left is None:
+            continue
+        turns_left -= 1
+        if turns_left > 0:
+            pokemon.ability_state["undying_revive_in"] = turns_left
+            continue
+        pokemon.ability_state.pop("undying_revive_in", None)
+        pokemon.ability_state["faint_processed"] = False
+        pokemon.current_hp = pokemon.hp
+        pokemon.status = StatusType.NORMAL
+        pokemon.poison_stacks = 0
+        pokemon.burn_stacks = 0
+        pokemon.freeze_stacks = 0
+        pokemon.leech_stacks = 0
+        pokemon.frostbite_damage = 0
 
 
 # ============================================================
@@ -307,16 +443,25 @@ def turn_end_effects(state: BattleState) -> None:
             if p.cooldowns[k] > 0:
                 p.cooldowns[k] -= 1
 
+    _process_revive_timers(state)
+    _clear_turn_temporary_ability_logic(state)
+
 
 
 def _check_fainted_and_deduct_mp(state: BattleState) -> None:
     """检查倒地精灵，扣除MP"""
     pa = state.team_a[state.current_a]
     pb = state.team_b[state.current_b]
-    if pa.is_fainted:
+    if pa.is_fainted and not pa.ability_state.get("faint_processed"):
+        pa.ability_state["faint_processed"] = True
         state.mp_a -= 1
-    if pb.is_fainted:
+        if _ability_name(pa) == "不朽":
+            pa.ability_state["undying_revive_in"] = 3
+    if pb.is_fainted and not pb.ability_state.get("faint_processed"):
+        pb.ability_state["faint_processed"] = True
         state.mp_b -= 1
+        if _ability_name(pb) == "不朽":
+            pb.ability_state["undying_revive_in"] = 3
 
 
 def _apply_moisture_mark(state: BattleState) -> None:
@@ -331,7 +476,10 @@ def _apply_moisture_mark(state: BattleState) -> None:
         team_list = state.team_a if team == "a" else state.team_b
         for p in team_list:
             for s in p.skills:
-                s.energy_cost = max(0, s.energy_cost - stacks)
+                delta = -stacks
+                if _ability_name(p) == "对流":
+                    delta = -delta
+                s.energy_cost = max(0, s.energy_cost + delta)
         marks["moisture_mark"] = 0   # 消耗印记，效果已永久写入技能
 
 
@@ -345,6 +493,7 @@ def execute_full_turn(state: BattleState, action_a: Action, action_b: Action,
     """
     # 湿润印记：回合开始时应用全队能耗减少
     _trigger_battle_start_effects(state)
+    _apply_turn_start_ability_logic(state)
 
     _apply_moisture_mark(state)
 
@@ -369,6 +518,7 @@ def execute_full_turn(state: BattleState, action_a: Action, action_b: Action,
     auto_switch(state, switch_cb_a, switch_cb_b)
 
     if check_winner(state):
+        _clear_turn_temporary_ability_logic(state)
         return
 
     # 后手行动
@@ -377,6 +527,7 @@ def execute_full_turn(state: BattleState, action_a: Action, action_b: Action,
     auto_switch(state, switch_cb_a, switch_cb_b)
 
     if check_winner(state):
+        _clear_turn_temporary_ability_logic(state)
         return
 
     turn_end_effects(state)
@@ -396,9 +547,13 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
     current = team_list[idx]
     enemy = enemy_list[eidx]
 
+    if current.is_fainted:
+        return
+
     # 换人
     if action[0] == -2:
         old_pokemon = current
+        switch_snapshot = current.copy_state()
         current.on_switch_out()
 
         # 特性: 离场触发 (翠顶夫人洁癖)
@@ -442,7 +597,10 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
             EffectExecutor.execute_ability(
                 state, enemy, new_pokemon, Timing.ON_ENEMY_SWITCH,
                 enemy.ability_effects, enemy_team,
+                context={"switched_out": old_pokemon, "switched_in": new_pokemon},
             )
+        if _ability_name(enemy) == "贪婪":
+            _transfer_pokemon_state(switch_snapshot, new_pokemon)
         return
 
     # 汇合聚能
@@ -468,7 +626,10 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
             reduce = tag.params.get("reduce", 0)
             if per == "enemy_poison":
                 refund = enemy.poison_stacks * reduce
-                actual_cost = max(0, actual_cost - refund)
+                dynamic_delta = -refund
+                if _ability_name(current) == "对流":
+                    dynamic_delta = -dynamic_delta
+                actual_cost = max(0, actual_cost + dynamic_delta)
 
     if current.energy < actual_cost:
         current.gain_energy(5)
@@ -531,13 +692,13 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
                         continue
                     for tag in s.effects:
                         if tag.type == E.PERMANENT_MOD and tag.params.get("trigger") == "per_counter":
-                            from src.effect_engine import _apply_permanent_mod
                             _apply_permanent_mod(current, s, tag.params)
 
             if counter_result.get("interrupted"):
                 result["interrupted"] = True
 
             if counter_succeeded:
+                _handle_counter_success_ability(state, current, skill)
                 _trigger_ally_counter_effects(state, team, enemy)
             if counter_result.get("force_switch"):
                 result["force_switch"] = True
@@ -569,10 +730,10 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
                         for tag in s.effects:
                             if tag.type == E.PERMANENT_MOD and tag.params.get("trigger") == "per_counter":
                                 # 能量刃：每应对1次威力永久+N
-                                from src.effect_engine import _apply_permanent_mod
                                 _apply_permanent_mod(current, s, tag.params)
 
                 if counter_succeeded:
+                    _handle_counter_success_ability(state, enemy, enemy_skill, defer_transform=True)
                     _trigger_ally_counter_effects(state, enemy_team, current)
                 if counter_result.get("force_enemy_switch"):
                     # 吓退: 强制我方脱离
@@ -608,6 +769,8 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
         if enemy.current_hp <= 0:
             enemy.current_hp = 0
             enemy.status = StatusType.FAINTED
+    if enemy.ability_state.pop("guard_transform_pending", None):
+        _transform_to_guard_queen(enemy)
 
     # 击败检查 & 击败时效果
     if enemy.is_fainted:
@@ -634,6 +797,15 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
 
     # 脱离
     if result.get("force_switch"):
+        alive = [i for i, p in enumerate(team_list) if not p.is_fainted and i != idx]
+        if alive:
+            current.on_switch_out()
+            new_idx = random.choice(alive)
+            if team == "a":
+                state.current_a = new_idx
+            else:
+                state.current_b = new_idx
+    elif current.ability_state.pop("force_switch_after_action", None):
         alive = [i for i, p in enumerate(team_list) if not p.is_fainted and i != idx]
         if alive:
             current.on_switch_out()
@@ -704,7 +876,10 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
     # 毒液渗透: 动态能耗减免（每层敌方中毒 -1 能耗）
     energy_refund = result.get("_energy_refund", 0)
     if energy_refund > 0:
-        skill.energy_cost = max(0, skill.energy_cost - energy_refund)
+        delta = -energy_refund
+        if _ability_name(current) == "对流":
+            delta = -delta
+        skill.energy_cost = max(0, skill.energy_cost + delta)
 
 
 def _is_first_action(state: BattleState, team: str, action: Action,

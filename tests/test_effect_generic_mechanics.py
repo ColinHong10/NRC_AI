@@ -146,7 +146,7 @@ def test_skill_mod_priority_affects_turn_order():
         category=SkillCategory.PHYSICAL,
         effects=[EffectTag(E.DAMAGE)],
     )
-    user = make_pokemon("user", speed=50, attack=140, skills=[priority_buff, strike])
+    user = make_pokemon("user", hp=500, defense=160, speed=50, attack=140, skills=[priority_buff, strike])
     enemy = make_pokemon("enemy", hp=180, defense=70, speed=200, attack=140, skills=[strike])
     state = BattleState(team_a=[user], team_b=[enemy])
 
