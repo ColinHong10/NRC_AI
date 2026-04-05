@@ -154,6 +154,7 @@ def _effect_tag_text(tag) -> str:
         return "驱散印记"
     if t == E.CONDITIONAL_BUFF:
         return "条件增益"
+    # Legacy COUNTER_* tags (保留兼容)
     if t == E.COUNTER_ATTACK:
         base = "应对攻击"
         subs = getattr(tag, "sub_effects", None) or []
@@ -190,13 +191,30 @@ def _effect_tag_text(tag) -> str:
 
 def _skill_effect_display(skill) -> dict:
     """生成前端展示用的技能效果摘要。"""
+    from src.effect_models import SkillEffect as _SE, SkillTiming as _ST
     tags = []
     details = []
     if getattr(skill, "effects", None):
-        for tag in skill.effects:
-            text = _effect_tag_text(tag)
-            details.append(text)
-            tags.append(text.split("：", 1)[0])
+        for item in skill.effects:
+            if isinstance(item, _SE):
+                # SE 格式: 展示每个 EffectTag
+                prefix = ""
+                if item.timing == _ST.ON_COUNTER:
+                    cat = item.filter.get("category", "")
+                    cat_name = {"attack": "攻击", "status": "状态", "defense": "防御"}.get(cat, cat)
+                    prefix = f"应对{cat_name}："
+                for tag in item.effects:
+                    text = _effect_tag_text(tag)
+                    full = f"{prefix}{text}" if prefix else text
+                    details.append(full)
+                    tags.append(full.split("：", 1)[0] if prefix else text.split("：", 1)[0])
+                if not item.effects and prefix:
+                    details.append(prefix.rstrip("："))
+                    tags.append(prefix.rstrip("："))
+            else:
+                text = _effect_tag_text(item)
+                details.append(text)
+                tags.append(text.split("：", 1)[0])
 
     if skill.life_drain > 0:
         tags.append(f"吸血{int(skill.life_drain * 100)}%")
@@ -392,6 +410,19 @@ session = BattleSession()
 # ═══════════════════════════════════════
 
 def serialize_pokemon(p, is_current=False):
+    # ability_state 中有意义的 UI 字段
+    ability_state = getattr(p, "ability_state", {}) or {}
+    ability_info = []
+    # 特性 buff 层数（如身经百练的应对计数）
+    if ability_state.get("guard_counters", 0) > 0:
+        ability_info.append(f"应对计数:{ability_state['guard_counters']}")
+    if ability_state.get("undying_revive_in", 0) > 0:
+        ability_info.append(f"复活倒计时:{ability_state['undying_revive_in']}")
+    if ability_state.get("threat_speed_bonus_active"):
+        ability_info.append("预警加速")
+    if ability_state.get("cost_invert"):
+        ability_info.append("能耗反转")
+
     return {
         "name":            p.name,
         "type":            p.pokemon_type.value,
@@ -407,11 +438,25 @@ def serialize_pokemon(p, is_current=False):
         "meteor_stacks":   p.meteor_stacks,
         "meteor_countdown":p.meteor_countdown,
         "charging":        p.charging_skill_idx >= 0,
+        # 净值（正=buff，负=debuff）
         "atk_mod":         round((p.atk_up - p.atk_down) * 100),
         "def_mod":         round((p.def_up - p.def_down) * 100),
         "spatk_mod":       round((p.spatk_up - p.spatk_down) * 100),
         "spdef_mod":       round((p.spdef_up - p.spdef_down) * 100),
         "speed_mod":       round((p.speed_up - p.speed_down) * 100),
+        # 分向数值（供前端分色显示）
+        "atk_up":    round(p.atk_up * 100),
+        "atk_down":  round(p.atk_down * 100),
+        "def_up":    round(p.def_up * 100),
+        "def_down":  round(p.def_down * 100),
+        "spatk_up":  round(p.spatk_up * 100),
+        "spatk_down":round(p.spatk_down * 100),
+        "spdef_up":  round(p.spdef_up * 100),
+        "spdef_down":round(p.spdef_down * 100),
+        "speed_up":  round(p.speed_up * 100),
+        "speed_down":round(p.speed_down * 100),
+        # 特性状态
+        "ability_info": ability_info,
         "skills":          [serialize_skill(s, p.energy, p.cooldowns.get(i, 0))
                             for i, s in enumerate(p.skills)] if is_current else [],
     }
@@ -454,10 +499,17 @@ def _skill_tags(s):
     if s.is_mark:              tags.append("印记")
     # 从 effects 读取更多标签，避免 UI 只看到基础数值
     if hasattr(s, "effects") and s.effects:
-        for tag in s.effects:
-            text = _effect_tag_text(tag)
-            if text:
-                tags.append(text.split("：", 1)[0])
+        from src.effect_models import SkillEffect as _SE, SkillTiming as _ST
+        for item in s.effects:
+            if isinstance(item, _SE):
+                for tag in item.effects:
+                    text = _effect_tag_text(tag)
+                    if text:
+                        tags.append(text.split(":", 1)[0].split("：", 1)[0])
+            else:
+                text = _effect_tag_text(item)
+                if text:
+                    tags.append(text.split("：", 1)[0])
     return list(dict.fromkeys(tags))  # 去重保序
 
 
@@ -474,7 +526,8 @@ def _get_type_effectiveness_for_display(attacker_type_val: str, defender_type_va
 
 def serialize_state(state: BattleState, waiting: bool = False,
                     game_over: bool = False, winner: str = None,
-                    events: List[dict] = None):
+                    events: List[dict] = None,
+                    force_switch_prompt: bool = False):
     team_a_data = []
     for i, p in enumerate(state.team_a):
         d = serialize_pokemon(p, is_current=(i == state.current_a))
@@ -511,6 +564,7 @@ def serialize_state(state: BattleState, waiting: bool = False,
         "winner":             winner,
         "logs":               session.logs,       # 完整日志，前端增量追加
         "events":             events or [],        # 本回合动画事件
+        "force_switch_prompt": force_switch_prompt,  # 泡沫幻影等触发后要求玩家选择换人
     }
 
 
@@ -806,6 +860,9 @@ async def receive_player_action(ws: WebSocket, msg: dict):
 
     # ── 执行回合 ──
     snap_before = _snapshot(state)
+    # 清除上回合的聚能日志
+    if hasattr(state, "_energy_recharge_log"):
+        state._energy_recharge_log.clear()
     try:
         execute_full_turn(state, action_a, action_b, _ai_switch_callback, _ai_switch_callback)
     except Exception as e:
@@ -819,6 +876,14 @@ async def receive_player_action(ws: WebSocket, msg: dict):
         await ws.send_text(json.dumps({"type": "your_turn", "turn": state.turn}))
         return
     snap_after  = _snapshot(state)
+
+    # ── 聚能提示 ──
+    for ev in getattr(state, "_energy_recharge_log", []):
+        side_str = "🧑 你" if ev["team"] == "a" else "🤖 AI"
+        session.add_log(
+            f"  ⚡ {side_str}方 {ev['pokemon']} 能量不足（需{ev['needed']}，有{ev['had']}），"
+            f"自动聚能+5，{ev['skill']}未能释放"
+        )
 
     # ── 湿润印记触发提示（在执行前检测到的印记已在execute_full_turn开头消耗） ──
     if moisture_a > 0:
@@ -842,6 +907,53 @@ async def receive_player_action(ws: WebSocket, msg: dict):
 
     # ── 生成前端动画事件 ──
     events = _build_events(snap_before, snap_after, state, action_a, action_b, pa, pb)
+
+    # ── 处理应对触发的强制换人（泡沫幻影等） ──
+    pending = getattr(state, "_pending_switch_requests", [])
+    if pending:
+        state._pending_switch_requests = []
+        for req in pending:
+            if req["team"] == "a":
+                # 玩家方需要手动选择
+                session.add_log(f"  🔄 泡沫幻影应对成功！选择换上哪只精灵")
+                await ws.send_text(json.dumps(serialize_state(
+                    state, waiting=True, events=events,
+                    force_switch_prompt=True,
+                )))
+                events = []  # 事件已发送，清空避免重复
+                # 等待玩家发送换人消息
+                raw = await ws.receive_text()
+                msg2 = json.loads(raw)
+                if msg2.get("type") == "switch" and msg2.get("index") in req["alive"]:
+                    chosen = msg2["index"]
+                    if req["team"] == "a":
+                        state.current_a = chosen
+                    else:
+                        state.current_b = chosen
+                    new_p = state.team_a[chosen] if req["team"] == "a" else state.team_b[chosen]
+                    session.add_log(f"  ↩️  换上 {new_p.name}")
+                    # 触发入场特性
+                    from src.battle import _trigger_battle_start_effects
+                    _trigger_battle_start_effects(state)
+                    EffectExecutor.execute_agility_entry(
+                        state, new_p,
+                        state.team_b[state.current_b] if req["team"] == "a" else state.team_a[state.current_a],
+                        req["team"],
+                    )
+                    if new_p.ability_effects:
+                        EffectExecutor.execute_ability(
+                            state, new_p,
+                            state.team_b[state.current_b] if req["team"] == "a" else state.team_a[state.current_a],
+                            Timing.ON_ENTER, new_p.ability_effects, req["team"],
+                        )
+            else:
+                # AI方由 AI 决策
+                chosen = _ai_switch_callback(state, state.team_b, req["alive"])
+                state.current_b = chosen
+                new_p = state.team_b[chosen]
+                session.add_log(f"  🤖 AI 换上 {new_p.name}")
+                from src.battle import _trigger_battle_start_effects
+                _trigger_battle_start_effects(state)
 
     winner = check_winner(state)
     if winner:
@@ -876,11 +988,17 @@ def _eff_preview(s) -> str:
     if s.charge:                 parts.append("（蓄力）")
     # effects 里的应对标签
     if hasattr(s, "effects") and s.effects:
-        from src.effect_models import E
-        for tag in s.effects:
-            if tag.type == E.COUNTER_ATTACK:  parts.append("[应对物/魔]")
-            if tag.type == E.COUNTER_DEFENSE: parts.append("[应对防御]")
-            if tag.type == E.COUNTER_STATUS:  parts.append("[应对变化]")
+        from src.effect_models import E, SkillEffect, SkillTiming
+        for item in s.effects:
+            if isinstance(item, SkillEffect) and item.timing == SkillTiming.ON_COUNTER:
+                cat = item.filter.get("category", "")
+                if cat == "attack":   parts.append("[应对物/魔]")
+                elif cat == "defense": parts.append("[应对防御]")
+                elif cat == "status":  parts.append("[应对变化]")
+            elif hasattr(item, "type"):
+                if item.type == E.COUNTER_ATTACK:  parts.append("[应对物/魔]")
+                if item.type == E.COUNTER_DEFENSE: parts.append("[应对防御]")
+                if item.type == E.COUNTER_STATUS:  parts.append("[应对变化]")
     return "  " + " | ".join(parts) if parts else ""
 
 
@@ -924,9 +1042,12 @@ def _build_events(snap_before, snap_after, state, action_a, action_b, pa_before,
 
 def _has_counter(s) -> bool:
     if hasattr(s, "effects") and s.effects:
-        from src.effect_models import E
-        return any(t.type in (E.COUNTER_ATTACK, E.COUNTER_DEFENSE, E.COUNTER_STATUS)
-                   for t in s.effects)
+        from src.effect_models import E, SkillEffect, SkillTiming
+        for item in s.effects:
+            if isinstance(item, SkillEffect) and item.timing == SkillTiming.ON_COUNTER:
+                return True
+            if hasattr(item, "type") and item.type in (E.COUNTER_ATTACK, E.COUNTER_DEFENSE, E.COUNTER_STATUS):
+                return True
     return (s.counter_physical_power_mult > 0 or s.counter_defense_power_mult > 0
             or s.counter_status_power_mult > 0)
 

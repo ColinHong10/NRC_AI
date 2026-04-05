@@ -23,6 +23,19 @@ data/crawl_progress.json
 
 # Local info (not for repo)
 信息/
+dc_dm/
 
 # Large raw data / duplicates
 data/skills_raw.json
+
+# 临时审计文档
+AUDIT_INDEX.md
+AUDIT_REPORT.md
+AUDIT_SUMMARY.txt
+analysis/
+
+# 爬虫日志
+scripts/scrape_log.txt
+
+# Excel 副本
+data/*.xlsx

@@ -4,9 +4,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.battle import execute_full_turn
-from src.effect_models import E, EffectTag
+from src.effect_models import E, EffectTag, Timing, SkillEffect, SkillTiming
 from src.models import BattleState, Pokemon, Skill, SkillCategory, Type
 from src.skill_db import load_ability_effects
+from src.effect_engine import EffectExecutor
 
 
 def make_skill(name, power=0, energy=0, skill_type=Type.NORMAL,
@@ -81,8 +82,8 @@ def test_guard_transforms_after_two_defense_counters():
         "guard",
         category=SkillCategory.DEFENSE,
         effects=[
-            EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.5}),
-            EffectTag(E.COUNTER_ATTACK, sub_effects=[]),
+            SkillEffect(SkillTiming.ON_USE, [EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.5})]),
+            SkillEffect(SkillTiming.ON_COUNTER, [], {"category": "attack"}),
         ],
     )
     attack = make_skill("slash", power=80, category=SkillCategory.PHYSICAL, effects=[EffectTag(E.DAMAGE)])
@@ -204,10 +205,143 @@ def test_scouting_abilities_trigger_before_enemy_action_choice_resolution():
     assert state.current_a == 1
 
 
+def test_ability_name_matching_is_exact():
+    """
+    特性名称映射必须精确匹配，避免错误归属的文本也被加载成特性效果。
+    """
+    assert load_ability_effects("预警:回合开始时若敌方技能足够击败自己，自己获得速度+50。")
+    assert load_ability_effects("预警者:回合开始时若敌方技能足够击败自己，自己获得速度+50。") == []
+
+
+def test_turn_start_ability_triggers_only_for_active_holder():
+    """
+    回合开始特性只应由当前上场的持有者触发，不能让后排精灵越权生效。
+    """
+    active = make_pokemon(
+        name="active",
+        hp=220,
+        speed=90,
+        skills=[make_skill("wait")],
+    )
+    bench = make_pokemon(
+        name="bench",
+        hp=220,
+        speed=90,
+        ability="预警:回合开始时若敌方技能足够击败自己，自己获得速度+50。",
+        skills=[make_skill("wait")],
+    )
+    enemy = make_pokemon(
+        name="enemy",
+        hp=220,
+        attack=180,
+        speed=100,
+        skills=[make_skill("nuke", power=400, category=SkillCategory.PHYSICAL, effects=[EffectTag(E.DAMAGE)])],
+    )
+    state = BattleState(team_a=[active, bench], team_b=[enemy], current_a=0, current_b=0)
+
+    execute_full_turn(state, (-1,), (0,))
+
+    assert active.speed_up == 0
+    assert bench.speed_up == 0
+
+    holder_state = BattleState(team_a=[bench], team_b=[enemy], current_a=0, current_b=0)
+    result = EffectExecutor.execute_ability(
+        holder_state,
+        bench,
+        enemy,
+        Timing.ON_TURN_START,
+        bench.ability_effects,
+        "a",
+    )
+    assert result["triggered"] is True
+    assert bench.speed_up == 0.5
+
+
+def test_counter_scaled_enter_ability_does_not_stack_on_repeat_entry():
+    """
+    身经百练类入场威力修正应基于原始威力重算，而不是对已修正威力再次乘算。
+    """
+    water_skill = make_skill("水刀", power=100, skill_type=Type.WATER, category=SkillCategory.PHYSICAL)
+    fire_skill = make_skill("火刀", power=100, skill_type=Type.FIRE, category=SkillCategory.PHYSICAL)
+    fighter = make_pokemon(name="captain", skills=[water_skill, fire_skill])
+    fighter.ability_effects = load_ability_effects("身经百练:己方每应对1次，水系和武系技能威力提升20%。")
+    enemy = make_pokemon(name="enemy", skills=[make_skill("wait")])
+    state = BattleState(team_a=[fighter], team_b=[enemy])
+    state.counter_count_a = 2
+
+    EffectExecutor.execute_ability(state, fighter, enemy, Timing.ON_ENTER, fighter.ability_effects, "a")
+    first_entry_power = fighter.skills[0].power
+    first_fire_power = fighter.skills[1].power
+    EffectExecutor.execute_ability(state, fighter, enemy, Timing.ON_ENTER, fighter.ability_effects, "a")
+    second_entry_power = fighter.skills[0].power
+    second_fire_power = fighter.skills[1].power
+
+    assert first_entry_power == 140
+    assert second_entry_power == 140
+    assert first_fire_power == 100
+    assert second_fire_power == 100
+
+
+def test_greed_does_not_trigger_on_self_switch():
+    """
+    贪婪只应在敌方换人时复制状态，自己换人不应误触发。
+    """
+    switch_skill = make_skill("wait")
+    greed_holder = make_pokemon(
+        name="greed_holder",
+        attack=100,
+        speed=100,
+        ability="贪婪:敌方精灵离场后，其增益和减益会被更换入场的精灵继承。",
+        skills=[switch_skill],
+    )
+    greed_holder.atk_up = 0.6
+    greed_holder.speed_down = 0.2
+    greed_holder.poison_stacks = 3
+    new_self = make_pokemon(name="new_self", skills=[switch_skill])
+    dummy_enemy = make_pokemon(name="enemy", skills=[switch_skill])
+    state = BattleState(team_a=[greed_holder, new_self], team_b=[dummy_enemy])
+
+    execute_full_turn(state, (-2, 1), (-1,))
+
+    current = state.team_a[state.current_a]
+    assert current.name == "new_self"
+    assert current.atk_up == 0
+    assert current.speed_down == 0
+    assert current.poison_stacks == 0
+
+
+def test_concentric_force_applies_only_to_first_two_slots_and_does_not_stack():
+    first = make_skill("first", power=100, effects=[EffectTag(E.DAMAGE)])
+    second = make_skill("second", power=110, effects=[EffectTag(E.DAMAGE)])
+    third = make_skill("third", power=120, effects=[EffectTag(E.DAMAGE)])
+    holder = make_pokemon(
+        name="holder",
+        ability="向心力:1/2号位技能获得传动和威力+30。",
+        skills=[first, second, third],
+    )
+    enemy = make_pokemon(name="enemy", skills=[make_skill("wait")])
+    state = BattleState(team_a=[holder], team_b=[enemy])
+
+    EffectExecutor.execute_ability(state, holder, enemy, Timing.PASSIVE, holder.ability_effects, "a")
+    EffectExecutor.execute_ability(state, holder, enemy, Timing.PASSIVE, holder.ability_effects, "a")
+
+    assert first.power == 130
+    assert second.power == 140
+    assert third.power == 120
+    assert sum(1 for tag in first.effects if tag.type == E.DRIVE) == 1
+    assert sum(1 for tag in second.effects if tag.type == E.DRIVE) == 1
+    assert all(tag.type != E.DRIVE for tag in third.effects)
+
+
 if __name__ == "__main__":
     test_undying_revives_full_hp_after_three_turns_without_auto_switching()
     test_guard_transforms_after_two_defense_counters()
     test_convection_inverts_cost_changes()
     test_greed_transfers_buffs_debuffs_and_statuses_on_enemy_switch()
     test_scouting_abilities_trigger_before_enemy_action_choice_resolution()
+    test_ability_name_matching_is_exact()
+    test_turn_start_ability_triggers_only_for_active_holder()
+    test_counter_scaled_enter_ability_does_not_stack_on_repeat_entry()
+    test_greed_does_not_trigger_on_self_switch()
+    test_concentric_force_applies_only_to_first_two_slots_and_does_not_stack()
     print("PASS: ability clarification regressions")

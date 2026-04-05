@@ -15,9 +15,9 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models import Pokemon, Skill, BattleState, Type, SkillCategory, StatusType
-from src.effect_models import E, EffectTag, Timing, AbilityEffect
+from src.effect_models import E, EffectTag, Timing, AbilityEffect, SkillEffect, SkillTiming
 from src.effect_engine import EffectExecutor
-from src.battle import DamageCalculator
+from src.battle import DamageCalculator, execute_full_turn
 
 
 # ─────────────────────────────────────────
@@ -60,10 +60,8 @@ def test_listen_bridge_reflects_original_damage():
         "听桥", power=0, energy=3,
         category=SkillCategory.DEFENSE,
         effects=[
-            EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.6}),
-            EffectTag(E.COUNTER_ATTACK, sub_effects=[
-                EffectTag(E.MIRROR_DAMAGE)
-            ]),
+            SkillEffect(SkillTiming.ON_USE, [EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.6})]),
+            SkillEffect(SkillTiming.ON_COUNTER, [EffectTag(E.MIRROR_DAMAGE)], {"category": "attack"}),
         ]
     )
 
@@ -134,7 +132,7 @@ def test_listen_bridge_vs_reduced_damage():
     EffectExecutor.execute_counter(
         state, defender, attacker_original,
         make_skill("听桥", power=0),
-        EffectTag(E.COUNTER_ATTACK, sub_effects=[EffectTag(E.MIRROR_DAMAGE)]),
+        SkillEffect(SkillTiming.ON_COUNTER, [EffectTag(E.MIRROR_DAMAGE)], {"category": "attack"}),
         attack_skill, original_dmg, "b",
     )
 
@@ -144,7 +142,7 @@ def test_listen_bridge_vs_reduced_damage():
     EffectExecutor.execute_counter(
         state2, defender, attacker_reduced,
         make_skill("听桥", power=0),
-        EffectTag(E.COUNTER_ATTACK, sub_effects=[EffectTag(E.MIRROR_DAMAGE)]),
+        SkillEffect(SkillTiming.ON_COUNTER, [EffectTag(E.MIRROR_DAMAGE)], {"category": "attack"}),
         attack_skill, reduced_dmg, "b",
     )
 
@@ -193,6 +191,101 @@ def test_energy_blade_per_counter_power_increase():
         f"第2次应对后威力期望300，实际{energy_blade.power}"
 
     print(f"PASS: 能量刃：应对2次后威力={energy_blade.power}（120+90+90）")
+
+
+def test_unmatched_counter_does_not_grant_per_counter_bonus():
+    """
+    未匹配的应对容器不应该算作应对成功，也不应该触发能量刃的 per_counter 永久增伤。
+    """
+    energy_blade = make_skill(
+        "能量刃", power=120, energy=0,
+        effects=[
+            EffectTag(E.DAMAGE),
+            EffectTag(E.PERMANENT_MOD, {"target": "power", "delta": 90, "trigger": "per_counter"}),
+        ],
+    )
+    normal_attack = make_skill("普攻", power=80, energy=0, effects=[EffectTag(E.DAMAGE)])
+    unmatched_counter = make_skill(
+        "假应对",
+        power=0,
+        energy=0,
+        category=SkillCategory.STATUS,
+        effects=[SkillEffect(SkillTiming.ON_COUNTER, [], {"category": "status"})],
+    )
+
+    attacker = make_pokemon("我方", attack=140, skills=[normal_attack, energy_blade], ptype=Type.FIGHTING)
+    defender = make_pokemon("敌方", defense=90, skills=[unmatched_counter], ptype=Type.WATER)
+    state = BattleState(team_a=[attacker], team_b=[defender])
+
+    execute_full_turn(state, (0,), (0,))
+
+    assert energy_blade.power == 120, f"未匹配应对不应加威力，实际为 {energy_blade.power}"
+
+
+def test_enemy_successful_counter_grants_its_own_per_counter_bonus():
+    """
+    当敌方成功应对时，per_counter 永久增伤应加在敌方技能上，而不是错误加到进攻方。
+    """
+    attacker_blade = make_skill(
+        "攻击方能量刃", power=120, energy=0,
+        effects=[
+            EffectTag(E.DAMAGE),
+            EffectTag(E.PERMANENT_MOD, {"target": "power", "delta": 90, "trigger": "per_counter"}),
+        ],
+    )
+    attacker_strike = make_skill("重击", power=80, energy=0, effects=[EffectTag(E.DAMAGE)])
+    defender_blade = make_skill(
+        "防守方能量刃", power=120, energy=0,
+        effects=[
+            EffectTag(E.DAMAGE),
+            EffectTag(E.PERMANENT_MOD, {"target": "power", "delta": 90, "trigger": "per_counter"}),
+        ],
+    )
+    defender_counter = make_skill(
+        "听桥", power=0, energy=0,
+        category=SkillCategory.DEFENSE,
+        effects=[
+            SkillEffect(SkillTiming.ON_USE, [EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.6})]),
+            SkillEffect(SkillTiming.ON_COUNTER, [], {"category": "attack"}),
+        ],
+    )
+
+    attacker = make_pokemon("攻击方", attack=140, skills=[attacker_strike, attacker_blade], ptype=Type.FIGHTING)
+    defender = make_pokemon("防守方", defense=120, skills=[defender_counter, defender_blade], ptype=Type.WATER)
+    state = BattleState(team_a=[attacker], team_b=[defender])
+
+    execute_full_turn(state, (0,), (0,))
+
+    assert attacker_blade.power == 120, f"攻击方不应因敌方应对成功获得加成，实际为 {attacker_blade.power}"
+    assert defender_blade.power == 210, f"敌方应对成功后威力应为 210，实际为 {defender_blade.power}"
+
+
+def test_counter_power_dynamic_updates_damage():
+    """
+    偷袭类技能的应对增伤需要真正回写到本次伤害，而不是只写在 execute_counter 的返回值里。
+    """
+    ambush = make_skill(
+        "偷袭", power=100, energy=0,
+        category=SkillCategory.PHYSICAL,
+        skill_type=Type.DARK,
+        effects=[
+            SkillEffect(SkillTiming.ON_USE, [EffectTag(E.DAMAGE)]),
+            SkillEffect(SkillTiming.ON_COUNTER, [
+                EffectTag(E.POWER_DYNAMIC, {"condition": "counter", "multiplier": 3.0}),
+            ], {"category": "status"}),
+        ],
+    )
+    enemy_status = make_skill("强化", power=0, energy=0, category=SkillCategory.STATUS, effects=[])
+    attacker = make_pokemon("偷袭者", attack=150, ptype=Type.DARK, skills=[ambush])
+    defender = make_pokemon("目标", hp=1000, defense=100, ptype=Type.NORMAL, skills=[enemy_status])
+    state = BattleState(team_a=[attacker], team_b=[defender])
+
+    expected = DamageCalculator.calculate(attacker, defender, ambush, power_override=300)
+    execute_full_turn(state, (0,), (0,))
+
+    assert defender.current_hp == defender.hp - expected, (
+        f"应对增伤未正确应用，期望伤害 {expected}，实际伤害 {defender.hp - defender.current_hp}"
+    )
 
 
 # ─────────────────────────────────────────
@@ -434,6 +527,9 @@ if __name__ == "__main__":
         test_listen_bridge_reflects_original_damage,
         test_listen_bridge_vs_reduced_damage,
         test_energy_blade_per_counter_power_increase,
+        test_unmatched_counter_does_not_grant_per_counter_bonus,
+        test_enemy_successful_counter_grants_its_own_per_counter_bonus,
+        test_counter_power_dynamic_updates_damage,
         test_energy_refund_dynamic_cost,
         test_replay_agility_executes_agility_skill,
         test_weather_sunny_fire_boost,

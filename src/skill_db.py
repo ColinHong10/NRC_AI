@@ -7,6 +7,7 @@
   3. 空列表 (无效果，仅数值)
 """
 import os
+import re
 import sqlite3
 from typing import Optional, List
 
@@ -97,11 +98,18 @@ def load_skills(csv_path: str = None) -> dict:
         except (IndexError, KeyError):
             agility = False
 
+        description = row["description"] or ""
+        priority_mod = 0
+        match = re.search(r"先手([+-]\d+)", description)
+        if match:
+            priority_mod = int(match.group(1))
+
         skill = Skill(
             name=name, skill_type=element, category=category,
             power=power, energy_cost=energy,
-            hit_count=hit_count, agility=agility,
+            hit_count=hit_count, agility=agility, priority_mod=priority_mod,
         )
+        skill._base_energy_cost = energy
         skill.effects = all_effects.get(name, [])
 
         _skill_db[name] = skill

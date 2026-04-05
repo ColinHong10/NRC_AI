@@ -45,11 +45,14 @@ def make_pokemon(
 
 
 def _has_tag(skill, tag_type, **params):
-    for tag in skill.effects:
-        if tag.type != tag_type:
-            continue
-        if all(tag.params.get(k) == v for k, v in params.items()):
-            return True
+    from src.effect_models import SkillEffect
+    for item in skill.effects:
+        tags = item.effects if isinstance(item, SkillEffect) else [item]
+        for tag in tags:
+            if tag.type != tag_type:
+                continue
+            if all(tag.params.get(k) == v for k, v in params.items()):
+                return True
     return False
 
 
@@ -72,15 +75,20 @@ def test_manual_stat_and_cost_skills_are_loaded():
 
     yenshui = get_skill("盐水浴")
     assert _has_tag(yenshui, E.PASSIVE_ENERGY_REDUCE, reduce=2, range="all")
+    # 盐水浴 now uses SE format: ON_COUNTER with category="defense"
+    from src.effect_models import SkillEffect as _SE, SkillTiming as _ST
+    counter_ses = [
+        se for se in yenshui.effects
+        if isinstance(se, _SE) and se.timing == _ST.ON_COUNTER
+    ]
+    assert len(counter_ses) >= 1
+    counter_se = counter_ses[0]
+    assert counter_se.filter.get("category") == "defense"
     assert any(
-        tag.type == E.COUNTER_DEFENSE
-        and any(
-            sub.type == E.PASSIVE_ENERGY_REDUCE
-            and sub.params.get("reduce") == 1
-            and sub.params.get("range") == "all"
-            for sub in tag.sub_effects
-        )
-        for tag in yenshui.effects
+        tag.type == E.PASSIVE_ENERGY_REDUCE
+        and tag.params.get("reduce") == 1
+        and tag.params.get("range") == "all"
+        for tag in counter_se.effects
     )
 
 

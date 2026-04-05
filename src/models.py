@@ -208,6 +208,8 @@ class Skill:
             counter_damage_reflect=self.counter_damage_reflect,
         )
         s.effects = [e.copy() for e in self.effects] if self.effects else []
+        if hasattr(self, "_base_energy_cost"):
+            s._base_energy_cost = self._base_energy_cost
         return s
 
 

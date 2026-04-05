@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.effect_models import E, EffectTag
+from src.effect_models import E, EffectTag, SkillEffect, SkillTiming
 from src.models import Skill, Type, SkillCategory
 from src.server import serialize_skill, _skill_tags
 
@@ -16,8 +16,8 @@ def test_serialize_skill_includes_effect_summary():
         power=0,
         energy_cost=3,
         effects=[
-            EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.6}),
-            EffectTag(E.COUNTER_ATTACK, sub_effects=[EffectTag(E.MIRROR_DAMAGE)]),
+            SkillEffect(SkillTiming.ON_USE, [EffectTag(E.DAMAGE_REDUCTION, {"pct": 0.6})]),
+            SkillEffect(SkillTiming.ON_COUNTER, [EffectTag(E.MIRROR_DAMAGE)], {"category": "attack"}),
         ],
     )
 

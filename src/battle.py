@@ -14,7 +14,29 @@ from src.models import (
 )
 from src.skill_db import get_skill
 from src.effect_models import E, Timing
-from src.effect_engine import EffectExecutor, _apply_permanent_mod
+from src.effect_engine import EffectExecutor, _apply_permanent_mod, _adjust_cost_delta
+
+
+def _iter_flat_tags(effects):
+    """从 List[SkillEffect] 或 List[EffectTag] 中提取所有 EffectTag（平铺）。"""
+    from src.effect_models import SkillEffect
+    if not effects:
+        return
+    for item in effects:
+        if isinstance(item, SkillEffect):
+            yield from item.effects
+        else:
+            yield item
+
+
+def _has_tag_type(effects, etype) -> bool:
+    """检查效果列表中是否存在某类型的 EffectTag。"""
+    return any(tag.type == etype for tag in _iter_flat_tags(effects))
+
+
+def _find_tags(effects, etype):
+    """返回效果列表中所有匹配类型的 EffectTag。"""
+    return [tag for tag in _iter_flat_tags(effects) if tag.type == etype]
 
 
 def _ability_name(pokemon: Pokemon) -> str:
@@ -89,6 +111,28 @@ def _transfer_pokemon_state(source: Pokemon, target: Pokemon) -> None:
     target.frostbite_damage = source.frostbite_damage
     if "cute_mark" in source.ability_state:
         target.ability_state["cute_mark"] = source.ability_state["cute_mark"]
+    if "temporary_skill_cost_mods" in source.ability_state:
+        target.ability_state["temporary_skill_cost_mods"] = [
+            dict(mod) for mod in source.ability_state["temporary_skill_cost_mods"]
+        ]
+
+
+def _temporary_skill_cost_delta(user: Pokemon, skill: Skill) -> int:
+    delta = 0
+    for mod in user.ability_state.get("temporary_skill_cost_mods", []):
+        filt = mod.get("filter", "all")
+        matched = False
+        if filt == "all":
+            matched = True
+        elif filt == "attack":
+            matched = skill.category in (SkillCategory.PHYSICAL, SkillCategory.MAGICAL)
+        elif filt == "used_skill":
+            matched = skill.name == mod.get("skill_name")
+        elif filt == "other_skills":
+            matched = skill.name != mod.get("skill_name")
+        if matched:
+            delta += _adjust_cost_delta(user, int(mod.get("amount", 0)))
+    return delta
 
 
 def _transform_to_guard_queen(pokemon: Pokemon) -> None:
@@ -461,6 +505,18 @@ def turn_end_effects(state: BattleState) -> None:
         for k in list(p.cooldowns.keys()):
             if p.cooldowns[k] > 0:
                 p.cooldowns[k] -= 1
+        if p.ability_state.get("temporary_skill_cost_mods"):
+            next_mods = []
+            for mod in p.ability_state["temporary_skill_cost_mods"]:
+                turns = int(mod.get("turns", 0)) - 1
+                if turns > 0:
+                    kept = dict(mod)
+                    kept["turns"] = turns
+                    next_mods.append(kept)
+            if next_mods:
+                p.ability_state["temporary_skill_cost_mods"] = next_mods
+            else:
+                p.ability_state.pop("temporary_skill_cost_mods", None)
 
     _process_revive_timers(state)
     _clear_turn_temporary_ability_logic(state)
@@ -505,10 +561,58 @@ def _apply_moisture_mark(state: BattleState) -> None:
         marks["moisture_mark"] = 0   # 消耗印记，效果已永久写入技能
 
 
+def _get_skill_for_action(state: BattleState, team: str, action: Action) -> Optional[Skill]:
+    """从 action 中获取技能对象，换人/跳过返回 None。"""
+    if action[0] < 0:
+        return None
+    team_list = state.team_a if team == "a" else state.team_b
+    idx = state.current_a if team == "a" else state.current_b
+    pokemon = team_list[idx]
+    if action[0] >= len(pokemon.skills):
+        return None
+    return pokemon.skills[action[0]]
+
+
+def _skill_has_counter_for(skill_a, skill_b) -> bool:
+    """检查 skill_a 是否有对 skill_b 类型的应对。"""
+    if not skill_a or not skill_b:
+        return False
+    from src.effect_models import SkillEffect as _SE, SkillTiming as _ST
+    cat_map = {
+        SkillCategory.PHYSICAL: "attack",
+        SkillCategory.MAGICAL: "attack",
+        SkillCategory.STATUS: "status",
+        SkillCategory.DEFENSE: "defense",
+    }
+    enemy_cat = cat_map.get(skill_b.category, "")
+    if not enemy_cat:
+        return False
+    for item in getattr(skill_a, "effects", []):
+        if isinstance(item, _SE) and item.timing == _ST.ON_COUNTER:
+            counter_cat = item.filter.get("category", "")
+            if counter_cat == enemy_cat or not counter_cat:
+                return True
+        elif hasattr(item, "type"):
+            from src.effect_models import E
+            type_to_cat = {
+                E.COUNTER_ATTACK: "attack",
+                E.COUNTER_STATUS: "status",
+                E.COUNTER_DEFENSE: "defense",
+            }
+            if type_to_cat.get(item.type) == enemy_cat:
+                return True
+    return False
+
+
 def execute_full_turn(state: BattleState, action_a: Action, action_b: Action,
                       switch_cb_a=None, switch_cb_b=None) -> None:
     """
     执行完整回合。
+
+    应对机制：
+    - 如果 A 的技能有对 B 技能类型的应对 → A 应对 B → B 先动但 A 的应对先结算
+    - 如果双方互相应对 → 按正常先手顺序
+    - 应对无视速度和先手等级
 
     switch_cb_a/b: 被动换人回调 (state, team_list, alive_indices) -> int
       精灵倒下后让玩家/AI选择下一只上场精灵。
@@ -526,13 +630,31 @@ def execute_full_turn(state: BattleState, action_a: Action, action_b: Action,
     state.switch_this_turn_a = False
     state.switch_this_turn_b = False
 
-    # 出招顺序：先手等级 > 当前有效速度 > 随机
-    if _compare_action_order(state, action_a, action_b) == -1:
+    # 获取双方技能
+    skill_a = _get_skill_for_action(state, "a", action_a)
+    skill_b = _get_skill_for_action(state, "b", action_b)
+
+    # 应对检测
+    a_counters_b = _skill_has_counter_for(skill_a, skill_b)
+    b_counters_a = _skill_has_counter_for(skill_b, skill_a)
+
+    if a_counters_b and not b_counters_a:
+        # A 应对 B → B 先动（被应对方先释放），A 后动
+        # 但 A 的应对效果会在 B 释放过程中先结算
+        first_team, second_team = "b", "a"
+        first_act, second_act = action_b, action_a
+    elif b_counters_a and not a_counters_b:
+        # B 应对 A → A 先动（被应对方先释放），B 后动
         first_team, second_team = "a", "b"
         first_act, second_act = action_a, action_b
     else:
-        first_team, second_team = "b", "a"
-        first_act, second_act = action_b, action_a
+        # 无应对 / 双方互相应对 → 正常先手判定
+        if _compare_action_order(state, action_a, action_b) == -1:
+            first_team, second_team = "a", "b"
+            first_act, second_act = action_a, action_b
+        else:
+            first_team, second_team = "b", "a"
+            first_act, second_act = action_b, action_a
 
     # 先手行动
     _execute_with_counter(state, first_team, first_act, second_team, second_act, is_first=True)
@@ -645,8 +767,13 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
             current.charging_skill_idx = -1
 
     # 计算实际能耗（含动态减免，如毒液渗透）
-    actual_cost = max(0, skill.energy_cost + getattr(current, "skill_cost_mod", 0))
-    for tag in getattr(skill, "effects", []):
+    actual_cost = max(
+        0,
+        skill.energy_cost
+        + getattr(current, "skill_cost_mod", 0)
+        + _temporary_skill_cost_delta(current, skill),
+    )
+    for tag in _iter_flat_tags(getattr(skill, "effects", [])):
         if tag.type == E.ENERGY_COST_DYNAMIC:
             per = tag.params.get("per", "")
             reduce = tag.params.get("reduce", 0)
@@ -659,6 +786,13 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
 
     if current.energy < actual_cost:
         current.gain_energy(5)
+        # 记录聚能事件，供 server.py 日志展示
+        if not hasattr(state, "_energy_recharge_log"):
+            state._energy_recharge_log = []
+        state._energy_recharge_log.append({
+            "team": team, "pokemon": current.name,
+            "skill": skill.name, "needed": actual_cost, "had": current.energy - 5,
+        })
         return
     current.energy -= actual_cost
 
@@ -693,13 +827,14 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
     # 先检查敌方技能是否有防御减伤（防御/风墙/听桥/火焰护盾等）
     # damage_reduction 先于应对效果结算
     if enemy_skill and hasattr(enemy_skill, "effects") and enemy_skill.effects:
-        for e2 in enemy_skill.effects:
+        for e2 in _iter_flat_tags(enemy_skill.effects):
             if e2.type == E.DAMAGE_REDUCTION and damage > 0:
                 pct = e2.params.get("pct", 0)
                 damage = int(damage * (1.0 - pct))
 
     # 应对解析 (我方技能有 COUNTER_*，如毒液渗透/偷袭等)
-    if enemy_skill and not enemy.is_fainted and result["counter_effects"]:
+    should_resolve_self_counters = _has_tag_type(skill.effects, E.DAMAGE)
+    if enemy_skill and not enemy.is_fainted and result["counter_effects"] and should_resolve_self_counters:
         for counter_tag in result["counter_effects"]:
             pre_counter_count = state.counter_count_a if team == "a" else state.counter_count_b
             counter_result = EffectExecutor.execute_counter(
@@ -712,31 +847,43 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
                 > pre_counter_count
             )
 
-            if counter_result:  # 应对成功
+            if counter_result and "final_damage" in counter_result:
+                damage = counter_result["final_damage"]
+
+            if counter_succeeded:
                 for s in current.skills:
                     if not getattr(s, "effects", None):
                         continue
-                    for tag in s.effects:
+                    for tag in _iter_flat_tags(s.effects):
                         if tag.type == E.PERMANENT_MOD and tag.params.get("trigger") == "per_counter":
                             _apply_permanent_mod(current, s, tag.params, force=True)
 
-            if counter_result.get("interrupted"):
+            if counter_result and counter_result.get("interrupted"):
                 result["interrupted"] = True
 
             if counter_succeeded:
+                current.ability_state["last_counter_success_turn"] = state.turn
                 _handle_counter_success_ability(state, current, skill)
                 _trigger_ally_counter_effects(state, team, enemy)
-            if counter_result.get("force_switch"):
+            if counter_result and counter_result.get("force_switch"):
                 result["force_switch"] = True
 
-            if counter_result.get("force_enemy_switch"):
+            if counter_result and counter_result.get("force_enemy_switch"):
                 result["force_enemy_switch"] = True
 
     # 对方技能的应对效果（对方防御/状态技能应对我方攻击）
     # 传入原始伤害（听桥需要反弹原始伤害）
     if enemy_skill and hasattr(enemy_skill, "effects") and enemy_skill.effects:
-        for etag in enemy_skill.effects:
-            if etag.type in (E.COUNTER_ATTACK, E.COUNTER_STATUS, E.COUNTER_DEFENSE):
+        _counter_items = []
+        for item in enemy_skill.effects:
+            from src.effect_models import SkillEffect as _SE
+            if isinstance(item, _SE):
+                from src.effect_models import SkillTiming as _ST
+                if item.timing == _ST.ON_COUNTER:
+                    _counter_items.append(item)
+            elif hasattr(item, "type") and item.type in (E.COUNTER_ATTACK, E.COUNTER_STATUS, E.COUNTER_DEFENSE):
+                _counter_items.append(item)
+        for etag in _counter_items:
                 pre_counter_count = (
                     state.counter_count_a if enemy_team == "a" else state.counter_count_b
                 )
@@ -749,19 +896,20 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
                     > pre_counter_count
                 )
 
-                if counter_result:  # 应对成功
-                    for s in current.skills:
+                if counter_succeeded:
+                    for s in enemy.skills:
                         if not getattr(s, "effects", None):
                             continue
-                        for tag in s.effects:
+                        for tag in _iter_flat_tags(s.effects):
                             if tag.type == E.PERMANENT_MOD and tag.params.get("trigger") == "per_counter":
                                 # 能量刃：每应对1次威力永久+N
-                                _apply_permanent_mod(current, s, tag.params, force=True)
+                                _apply_permanent_mod(enemy, s, tag.params, force=True)
 
                 if counter_succeeded:
+                    enemy.ability_state["last_counter_success_turn"] = state.turn
                     _handle_counter_success_ability(state, enemy, enemy_skill, defer_transform=True)
                     _trigger_ally_counter_effects(state, enemy_team, current)
-                if counter_result.get("force_enemy_switch"):
+                if counter_result and counter_result.get("force_enemy_switch"):
                     # 吓退: 强制我方脱离
                     alive = [i for i, p in enumerate(team_list)
                              if not p.is_fainted and i != idx]
@@ -801,7 +949,7 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
     # 击败检查 & 击败时效果
     if enemy.is_fainted:
         # 感染病: 击败时中毒转印记
-        for tag in skill.effects:
+        for tag in _iter_flat_tags(skill.effects):
             if tag.type == E.CONVERT_POISON_TO_MARK and tag.params.get("on") == "kill":
                 marks = state.marks_b if team == "a" else state.marks_a
                 marks["poison_mark"] = marks.get("poison_mark", 0) + enemy.poison_stacks
@@ -821,16 +969,29 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
                 enemy.ability_effects, enemy_team,
             )
 
-    # 脱离
+    if result.get("_self_ko") and not current.is_fainted:
+        current.current_hp = 0
+        current.status = StatusType.FAINTED
+
+    # 脱离（泡沫幻影应对成功等触发的主动脱离）
+    # 记录到 state 供 server.py 检查，让玩家手动选择换上哪只（不随机）
     if result.get("force_switch"):
         alive = [i for i, p in enumerate(team_list) if not p.is_fainted and i != idx]
         if alive:
             current.on_switch_out()
-            new_idx = random.choice(alive)
+            # 存储待处理的换人请求，server.py 负责让玩家选择
+            if not hasattr(state, "_pending_switch_requests"):
+                state._pending_switch_requests = []
+            state._pending_switch_requests.append({
+                "team": team,
+                "reason": "force_switch",  # 主动脱离
+                "alive": alive,
+            })
+            # 临时用第一个存活精灵占位，等玩家选择后更新
             if team == "a":
-                state.current_a = new_idx
+                state.current_a = alive[0]
             else:
-                state.current_b = new_idx
+                state.current_b = alive[0]
     elif current.ability_state.pop("force_switch_after_action", None):
         alive = [i for i, p in enumerate(team_list) if not p.is_fainted and i != idx]
         if alive:
@@ -859,7 +1020,7 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
         # 检查对方是否使用了防御/减伤技能
         was_blocked = False
         if enemy_skill and enemy_skill.effects:
-            was_blocked = any(e.type == E.DAMAGE_REDUCTION for e in enemy_skill.effects)
+            was_blocked = _has_tag_type(enemy_skill.effects, E.DAMAGE_REDUCTION)
         elif enemy_skill and enemy_skill.damage_reduction > 0:
             was_blocked = True
         if not was_blocked:
@@ -878,6 +1039,12 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
             current.ability_effects, team,
             context={"skill": skill},
         )
+
+    # 技能自身的永久变化（每次使用后）
+    for tag in _iter_flat_tags(getattr(skill, "effects", [])):
+        if tag.type == E.PERMANENT_MOD and tag.params.get("trigger") == "per_use":
+            _apply_permanent_mod(current, skill, tag.params, force=True)
+
 
     # 条件增益: 嘲弄 (敌方本回合替换精灵)
     cond_buff = result.get("_conditional_enemy_switch_buff")
@@ -906,6 +1073,9 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
         if current.ability_state.get("cost_invert"):
             delta = -delta
         skill.energy_cost = max(0, skill.energy_cost + delta)
+
+    current.ability_state["last_skill_turn"] = state.turn
+    current.ability_state["last_skill_category"] = skill.category.value
 
 
 def _is_first_action(state: BattleState, team: str, action: Action,

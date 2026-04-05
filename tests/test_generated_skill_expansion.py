@@ -14,11 +14,14 @@ from src.skill_db import get_skill, load_skills
 
 
 def _has_tag(skill, tag_type, **params):
-    for tag in skill.effects:
-        if tag.type != tag_type:
-            continue
-        if all(tag.params.get(k) == v for k, v in params.items()):
-            return True
+    from src.effect_models import SkillEffect
+    for item in skill.effects:
+        tags = item.effects if isinstance(item, SkillEffect) else [item]
+        for tag in tags:
+            if tag.type != tag_type:
+                continue
+            if all(tag.params.get(k) == v for k, v in params.items()):
+                return True
     return False
 
 

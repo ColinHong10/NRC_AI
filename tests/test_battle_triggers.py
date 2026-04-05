@@ -13,7 +13,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models import Pokemon, Skill, BattleState, Type, SkillCategory
-from src.effect_models import E, EffectTag, Timing, AbilityEffect
+from src.effect_models import E, EffectTag, Timing, AbilityEffect, SkillEffect, SkillTiming
 from src.battle import auto_switch, execute_full_turn, _is_first_action, DamageCalculator
 
 
@@ -85,7 +85,7 @@ def test_ally_counter_triggers_allied_ability():
                 power=0,
                 energy=5,
                 category=SkillCategory.DEFENSE,
-                effects=[EffectTag(E.COUNTER_ATTACK)],
+                effects=[SkillEffect(SkillTiming.ON_COUNTER, [], {"category": "attack"})],
             )
         ],
     )

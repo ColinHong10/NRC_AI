@@ -27,6 +27,7 @@ class E(Enum):
     # ── 属性修改 ──
     SELF_BUFF = auto()               # 自身增益  params: {"atk":1.0, "spatk":0.7, "speed":80}
                                      #   百分比用小数(1.0=+100%), 速度用整数(+80=speed_mod)
+    SELF_DEBUFF = auto()             # 自身减益  params 同上, 值为正数(自动转为 down)
     ENEMY_DEBUFF = auto()            # 敌方减益  params 同上, 值为正数(自动取反)
 
     # ── 状态附加 ──
@@ -58,6 +59,11 @@ class E(Enum):
     SKILL_MOD = auto()               # 技能维度修正 params: {"target":"self","stat":"power_pct","value":0.4}
     NEXT_ATTACK_MOD = auto()         # 下一次攻击修正 params: {"power_bonus":70} / {"power_pct":1.0}
     CLEANSE = auto()                 # 清除增减益/状态 params: {"target":"self","mode":"buffs|debuffs|all"}
+    SELF_KO = auto()                 # 结算后自身力竭 params: {}
+    RESET_SKILL_COST = auto()        # 技能能耗重置为基础值 params: {}
+    ENERGY_ALL_IN = auto()           # 消耗所有能量，威力按消耗量缩放
+                                     # params: {"power_per_energy": 30}
+                                     # 实际威力 = 当前能量 × power_per_energy
 
     # ── 位置 / 传动 ──
     POSITION_BUFF = auto()           # 位置增益  params: {"positions":[0,2],"buff":{"atk":1.0}}
@@ -203,6 +209,62 @@ class AbilityEffect:
 
     def copy(self) -> "AbilityEffect":
         return AbilityEffect(
+            timing=self.timing,
+            effects=[e.copy() for e in self.effects],
+            filter=dict(self.filter),
+        )
+
+
+# ============================================================
+# 技能触发时机枚举
+# ============================================================
+class SkillTiming(Enum):
+    """技能效果触发时机 — 让技能具备和特性一样的显式阶段语义。"""
+    PRE_USE    = auto()  # 使用前：能耗调整、威力修正、自身 buff
+    ON_USE     = auto()  # 使用时：主体伤害、状态附加、减伤
+    ON_HIT     = auto()  # 命中后（有伤害才触发）：吸血、击败时效果
+    ON_COUNTER = auto()  # 应对时：替代 COUNTER_ATTACK/STATUS/DEFENSE 容器
+    IF         = auto()  # 条件满足时：敌换宠、血量阈值、上回合状态
+    POST_USE   = auto()  # 使用后：反噬自损、传动、敏捷、能耗累加
+
+
+# ============================================================
+# 技能效果定义
+# ============================================================
+class SkillEffect:
+    """
+    技能效果 = 触发时机 + 条件过滤 + 效果标签列表。
+    与 AbilityEffect 同构，但使用 SkillTiming 枚举。
+
+    filter 键值:
+      category      "attack"/"status"/"defense" — 应对匹配类型
+      enemy_switch   True — 敌方本回合换宠
+      first_strike   True — 先手时
+      self_hp_lt     0.5  — 己方HP低于50%
+      self_hp_gt     0.5  — 己方HP高于50%
+      per            "enemy_poison" — 按层数缩放
+      on_kill        True — 击败敌方时
+      energy_zero_after True — 使用后能量为0
+      prev_counter_success True — 上回合应对成功
+      counter        True — 在应对阶段触发（偷袭3倍威力）
+    """
+    __slots__ = ("timing", "effects", "filter")
+
+    def __init__(
+        self,
+        timing: SkillTiming,
+        effects: List[EffectTag],
+        filter: Optional[Dict[str, Any]] = None,
+    ):
+        self.timing = timing
+        self.effects = effects
+        self.filter = filter or {}
+
+    def __repr__(self):
+        return f"SkillEffect(timing={self.timing.name}, filter={self.filter}, effects={self.effects})"
+
+    def copy(self) -> "SkillEffect":
+        return SkillEffect(
             timing=self.timing,
             effects=[e.copy() for e in self.effects],
             filter=dict(self.filter),

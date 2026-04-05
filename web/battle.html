@@ -125,6 +125,12 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-dark);color
 .hp-track{height:7px;background:rgba(255,255,255,.07);border-radius:4px;overflow:hidden}
 .hp-fill{height:100%;border-radius:4px;transition:width .4s ease,background .4s;background:var(--hp-g)}
 .hp-text{font-size:9px;color:var(--dim);margin-top:2px;display:flex;justify-content:space-between}
+.buff-row{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;min-height:16px}
+.buff-tag{font-size:9px;padding:1px 5px;border-radius:8px;font-weight:600;line-height:1.4}
+.buff-up{background:rgba(74,222,128,.18);color:#4ade80;border:1px solid rgba(74,222,128,.35)}
+.buff-down{background:rgba(248,113,113,.18);color:#f87171;border:1px solid rgba(248,113,113,.35)}
+.buff-ability{background:rgba(168,85,247,.18);color:#c084fc;border:1px solid rgba(168,85,247,.35)}
+.buff-status{background:rgba(251,191,36,.18);color:#fbbf24;border:1px solid rgba(251,191,36,.35)}
 
 /* MP 点 */
 .mp-wrap{position:absolute;bottom:12px;display:flex;gap:4px}
@@ -272,6 +278,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-dark);color
         </div>
         <div class="hp-track"><div class="hp-fill" id="hp-fill-a" style="width:100%"></div></div>
         <div class="hp-text"><span>你的精灵</span><span id="hp-text-a">—</span></div>
+        <div class="buff-row" id="buff-a"></div>
       </div>
       <div class="hp-bar-wrap" id="hpbar-b">
         <div class="hpbar-name">
@@ -281,6 +288,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-dark);color
         </div>
         <div class="hp-track"><div class="hp-fill" id="hp-fill-b" style="width:100%"></div></div>
         <div class="hp-text"><span>AI的精灵</span><span id="hp-text-b">—</span></div>
+        <div class="buff-row" id="buff-b"></div>
       </div>
 
       <!-- MP -->
@@ -461,7 +469,11 @@ function renderState(s){
   document.getElementById('turn-info').textContent=`回合 ${s.turn}`;
   renderStrip('strip-a',s.team_a,s.current_a);
   renderStrip('strip-b',s.team_b,s.current_b);
-  if(s.waiting_for_player && !s.game_over){
+  if(s.force_switch_prompt && !s.game_over){
+    // 泡沫幻影等应对后强制换人：只展示换人面板，隐藏技能
+    renderSkills(null, null); // 清空技能区
+    renderForceSwitchPanel(s.team_a, s.current_a, pb);
+  } else if(s.waiting_for_player && !s.game_over){
     renderSkills(pa, pb);
     renderSwitchPanel(s.team_a, s.current_a, pb);
   }
@@ -485,6 +497,44 @@ function updateHpBar(side,p){
     const d=document.createElement('div');
     d.className='e-dot'+(i<p.energy?' on':'');
     ec.appendChild(d);
+  }
+  renderBuffRow(side, p);
+}
+
+function renderBuffRow(side, p){
+  const el = document.getElementById(`buff-${side}`);
+  if(!el) return;
+  el.innerHTML = '';
+  const tag = (text, cls) => {
+    const s = document.createElement('span');
+    s.className = `buff-tag ${cls}`;
+    s.textContent = text;
+    el.appendChild(s);
+  };
+
+  // 属性 buff/debuff（分别显示，只展示非零项）
+  const stats = [
+    ['物攻', p.atk_up, p.atk_down],
+    ['物防', p.def_up, p.def_down],
+    ['魔攻', p.spatk_up, p.spatk_down],
+    ['魔防', p.spdef_up, p.spdef_down],
+    ['速度', p.speed_up, p.speed_down],
+  ];
+  stats.forEach(([label, up, down]) => {
+    if(up && up > 0) tag(`${label}+${up}%`, 'buff-up');
+    if(down && down > 0) tag(`${label}-${down}%`, 'buff-down');
+  });
+
+  // 状态异常
+  if(p.poison_stacks > 0)    tag(`中毒×${p.poison_stacks}`, 'buff-status');
+  if(p.burn_stacks > 0)      tag(`灼烧×${p.burn_stacks}`, 'buff-status');
+  if(p.frostbite_damage > 0) tag(`冻伤`, 'buff-status');
+  if(p.leech_stacks > 0)     tag(`寄生×${p.leech_stacks}`, 'buff-status');
+  if(p.meteor_stacks > 0)    tag(`星陨×${p.meteor_stacks}(${p.meteor_countdown})`, 'buff-status');
+
+  // 特性状态
+  if(p.ability_info && p.ability_info.length > 0){
+    p.ability_info.forEach(info => tag(info, 'buff-ability'));
   }
 }
 
@@ -599,6 +649,50 @@ function renderSwitchPanel(teamA, curIdx, enemyPoke){
   back.textContent='← 返回技能';
   back.onclick=()=>{ showSwitch=false; panel.classList.remove('open'); };
   panel.appendChild(back);
+}
+
+// ══════════════════════════════
+// 强制换人面板（应对脱离，无返回按钮）
+// ══════════════════════════════
+function renderForceSwitchPanel(teamA, curIdx, enemyPoke){
+  // 隐藏技能区，强制展示换人
+  document.getElementById('switch-panel').classList.add('open');
+  const panel=document.getElementById('switch-panel');
+  panel.innerHTML='';
+
+  const title=document.createElement('div');
+  title.style.cssText='color:var(--yellow);font-weight:700;padding:6px 4px;font-size:12px';
+  title.textContent='🔄 应对成功！选择换上的精灵（不占回合）';
+  panel.appendChild(title);
+
+  teamA.forEach((p,i)=>{
+    if(i===curIdx || p.is_fainted) return;
+    const card=document.createElement('button');
+    card.className='sw-card';
+    const tc=TYPE_CLASS[p.type]||'';
+    const pct=p.hp>0?(p.current_hp/p.hp*100).toFixed(0):0;
+    const adv = p.type_advantage || 1.0;
+    let advHtml='';
+    if(adv>=2.0)      advHtml=`<span class="adv-badge adv-super">克制×${adv}</span>`;
+    else if(adv<=0.5) advHtml=`<span class="adv-badge adv-weak">被克×${adv}</span>`;
+    else              advHtml=`<span class="adv-badge adv-norm">普通</span>`;
+    card.innerHTML=`
+      <span class="sw-icon">${emoji(p.name)}</span>
+      <div class="sw-info">
+        <div class="sw-name">${p.name}</div>
+        <div class="sw-hp">HP ${p.current_hp}/${p.hp}(${pct}%) E=${p.energy}</div>
+      </div>
+      <span class="type-badge ${tc}" style="font-size:8px">${TYPE_ZH[p.type]||p.type}</span>
+      ${advHtml}`;
+    card.onclick=()=>doForceSwitch(i);
+    panel.appendChild(card);
+  });
+}
+
+function doForceSwitch(idx){
+  enableActions(false);
+  setWait(true,'换人中…');
+  send({type:'switch', index:idx});
 }
 
 // ══════════════════════════════
