@@ -292,8 +292,11 @@ class Pokemon:
         return max(0, self.hp - self.frostbite_damage)
 
     def gain_energy(self, amount: int) -> None:
-        """增加能量，不超过上限10"""
-        self.energy = min(10, self.energy + amount)
+        """增加能量，不超过上限10（除非有 energy_no_cap 特性）"""
+        if self.ability_state.get("energy_no_cap"):
+            self.energy = self.energy + amount
+        else:
+            self.energy = min(10, self.energy + amount)
 
     @staticmethod
     def _clamp_up(val: float) -> float:

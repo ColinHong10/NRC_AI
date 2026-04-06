@@ -4,20 +4,15 @@
 
 ---
 
-## 依赖
+## 快速开始
 
 ```bash
 pip install fastapi uvicorn[standard] openpyxl pandas beautifulsoup4 requests
-```
 
----
-
-## 启动
-
-```bash
-# Web 图形界面（推荐）
+# Web 界面（推荐）
 python run_web.py
-# 访问 http://localhost:8765/battle
+# 访问 http://localhost:8765/team （阵容编辑）
+# 访问 http://localhost:8765/battle（战斗界面）
 
 # 终端版本
 python start.py
@@ -25,73 +20,69 @@ python start.py
 
 ---
 
-## 目录结构
+## 项目结构
 
 ```
 NRC_AI/
-├── data/                       # 数据目录（路径依赖）
-│   ├── nrc.db                  # SQLite 主数据库（精灵/技能/血脉技能/可学技能）
-│   ├── pokemon_stats.xlsx      # 精灵种族值原始数据
-│   ├── skills_all.csv         # 技能原始数据（来源 A）
-│   ├── skills.xlsx             # 技能数据（来源 B）
-│   └── raw/
-│       └── skills_wiki.csv    # Wiki 爬取原始数据
+├── src/                            # 核心源码
+│   ├── models.py                   # Pokemon / Skill / BattleState 数据模型
+│   ├── effect_models.py            # E 枚举（效果原语）/ Timing / SkillTiming
+│   ├── effect_data.py              # 手工技能效果(59) + 特性效果配置(68)
+│   ├── effect_engine.py            # 效果执行引擎（Handler 注册表）
+│   ├── skill_effects_generated.py  # 自动生成技能效果(455)
+│   ├── battle.py                   # 战斗逻辑 + 印记 / 回合流程
+│   ├── skill_db.py                 # 技能数据库加载
+│   ├── pokemon_db.py               # 精灵数据库加载
+│   ├── mcts.py                     # 对抗式 MCTS AI
+│   ├── server.py                   # FastAPI + WebSocket 服务端
+│   └── main.py                     # 终端主菜单入口
 │
-├── src/                        # 核心源码
-│   ├── main.py                 # 终端主菜单入口
-│   ├── battle.py               # 战斗逻辑 + 效果引擎集成
-│   ├── models.py               # Pokemon / Skill / Type / BattleState 模型
-│   ├── pokemon_db.py           # 精灵数据库加载
-│   ├── skill_db.py             # 技能数据库加载
-│   ├── mcts.py                 # 对抗式 MCTS AI + 经验学习系统
-│   ├── effect_models.py        # EffectTag / Timing 枚举定义
-│   ├── effect_data.py          # 手动技能/特性效果配置（35 个）
-│   ├── effect_engine.py        # 效果执行引擎（Handler 注册表）
-│   ├── skill_effects_generated.py  # 自动生成技能效果（460 个）
-│   └── server.py               # FastAPI + WebSocket 服务端
+├── web/                            # 前端
+│   ├── battle.html                 # 战斗界面
+│   ├── team.html                   # 阵容编辑器
+│   └── index.html                  # 入口重定向
 │
-├── web/                        # Web 前端
-│   ├── battle.html             # 图形战斗界面
-│   └── team.html               # 队伍编辑器
+├── tests/                          # 测试（14 文件，107 用例）
+├── data/nrc.db                     # SQLite 数据库（461 精灵 × 495 技能）
+├── scripts/                        # 工具脚本（爬虫 / 生成器 / 审计）
+├── docs/                           # 参考文档
+│   ├── COVERAGE_MATRIX.md          # 特性覆盖矩阵
+│   └── SKILLS_ABILITIES_CONFIG_GUIDE.md  # 配置开发手册
 │
-├── scripts/                    # 工具脚本
-│   ├── crawl_pokemon_skills.py  # BiliGame Wiki 技能数据爬虫
-│   ├── audit_effect_coverage.py    # 技能效果覆盖率 / 特性缺口审计
-│   └── generate_skill_effects.py  # 数据库 description → 效果代码生成器
-│
-├── run_web.py                  # Web 界面启动脚本
-├── start.py                    # 终端菜单启动脚本
-└── run.bat                     # Windows 双击启动脚本
+├── ROADMAP.md                      # 项目路线图与进度
+└── requirements.txt
 ```
 
 ---
 
-## 数据说明
+## 数据规模
 
-所有数据文件位于 `data/` 目录，代码中通过相对路径加载：
-
-| 文件 | 用途 | 加载位置 |
-|---|---|---|
-| `nrc.db` | 主数据库：精灵信息、技能、关联表 | `pokemon_db.py`、`skill_db.py` |
-| `pokemon_stats.xlsx` | 精灵种族值原始数据 | `pokemon_db.py` |
-| `skills_all.csv` / `skills.xlsx` | 技能原始数据 | `skill_db.py` |
-| `raw/skills_wiki.csv` | Wiki 爬取的技能原始数据 | `scripts/crawl_pokemon_skills.py` |
+| 数据 | 数量 | 来源 |
+|------|------|------|
+| 精灵 | 461 | BiliGame Wiki + nrc.db |
+| 技能 | 495（472 有效果配置） | DB + 手工/自动配置 |
+| 特性 | 170（68 已配置） | DB + effect_data.py |
+| 印记 | 12 种 | 完整实现 |
+| 学习关系 | 21,331 | 精灵 × 技能关联 |
 
 ---
 
 ## 主要功能
 
-- **AI 自战**：双方均由对抗式 MCTS 驱动，每回合 150 次模拟
-- **玩家 vs AI**：终端或 Web 界面手动控制队伍
+- **Web 图形界面**：阵容编辑 + 实时战斗动画 + WebSocket 通信
+- **AI 自战**：双方 MCTS 驱动，每回合 150 次模拟
+- **玩家 vs AI**：Web 或终端手动控制
+- **效果引擎**：100+ 种效果原语，数据驱动，零硬编码
+- **印记系统**：12 种场地印记，不随换人消失
 - **批量模拟**：统计胜率、平均回合数
-- **经验学习**：AI 随对局积累优化决策
-- **Web 图形界面**：仿 Pokemon Showdown 风格，支持队伍编辑、实时战斗动画
 
 ---
 
-## 战斗规则
+## 当前进度
 
-- 能量系统：技能消耗能量，不足时自动聚能回复 5 点
-- 速度判定先后手（除非技能有必定先手属性）
-- 全部 495 个技能走统一效果标签引擎执行
-- 支持异常状态（中毒/灼烧/冻结/麻痹/睡眠）、印记、传动、镜面反射等
+详见 [ROADMAP.md](ROADMAP.md)。
+
+核心优先级：
+1. **技能 / 特性效果配置**（102 个特性待补、42 个空技能待修）
+2. **前端战斗画面升级**（Tooltip / 印记显示 / 键盘快捷键 / 统计面板）
+3. **伤害公式校准**（需游戏内真实数据对照）

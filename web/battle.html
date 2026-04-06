@@ -441,6 +441,13 @@ function onMsg(msg){
       if(msg.logs) appendLogs(msg.logs);
       if(msg.events && msg.events.length) playEvents(msg.events);
       if(msg.game_over) showGameOver(msg.winner);
+      // BUG #3 FIX: Explicitly handle force_switch_prompt state
+      // When backend sends force_switch_prompt=true, we should NOT set myTurn to false
+      // This is already done in renderState(), but let's make it explicit here
+      if(msg.force_switch_prompt && !msg.game_over){
+        // Force switch prompt is active - renderState() will handle UI
+        console.log('[DEBUG] Force switch prompt received, waiting for player choice');
+      }
       break;
     case 'your_turn':
       myTurn=true;
@@ -454,7 +461,12 @@ function onMsg(msg){
       setWait(true,'AI思考中…');
       break;
     case 'reset_ok': location.reload(); break;
-    case 'error': addLogLine('⚠️ '+msg.message,''); break;
+    case 'error': 
+      // BUG #3 FIX: Ensure error message doesn't leave UI in stuck state
+      addLogLine('⚠️ '+msg.message,'');
+      // After an error, backend should recover and send 'your_turn', but let's be safe
+      console.log('[DEBUG] Error received, waiting for backend recovery');
+      break;
   }
 }
 
@@ -469,18 +481,27 @@ function renderState(s){
   document.getElementById('turn-info').textContent=`回合 ${s.turn}`;
   renderStrip('strip-a',s.team_a,s.current_a);
   renderStrip('strip-b',s.team_b,s.current_b);
+  
+  // BUG #3 FIX: Improved state management for force_switch_prompt
   if(s.force_switch_prompt && !s.game_over){
     // 强制换人属于玩家输入阶段，必须清掉上一帧 AI 思考遮罩，否则会盖住换人面板
+    console.log('[DEBUG] Rendering force switch prompt - clearing AI thinking mask');
     myTurn=true;
     setWait(false);
     enableActions(false);
     renderSkills(null, null); // 清空技能区
     renderForceSwitchPanel(s.team_a, s.current_a, pb);
   } else if(s.waiting_for_player && !s.game_over){
+    console.log('[DEBUG] Rendering normal player turn');
     myTurn=true;
     setWait(false);
     renderSkills(pa, pb);
     renderSwitchPanel(s.team_a, s.current_a, pb);
+  } else if(s.game_over){
+    // Game is over, don't enable actions
+    console.log('[DEBUG] Game over, disabling actions');
+    myTurn=false;
+    setWait(false);
   }
 }
 
@@ -696,9 +717,15 @@ function renderForceSwitchPanel(teamA, curIdx, enemyPoke){
 }
 
 function doForceSwitch(idx){
+  // BUG #3 FIX: Add feedback and ensure message is sent properly
+  if(!myTurn) return; // Safety check
+  console.log(`[DEBUG] Player selecting forced switch to pokemon ${idx}`);
+  myTurn=false;
   enableActions(false);
   setWait(true,'换人中…');
+  // Send with exact format expected by backend
   send({type:'switch', index:idx});
+  console.log('[DEBUG] Forced switch message sent, waiting for backend response');
 }
 
 // ══════════════════════════════

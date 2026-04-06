@@ -100,6 +100,40 @@ def _effect_tag_text(tag) -> str:
         return f"中毒印记×{params.get('stacks', 1)}"
     if t == E.MOISTURE_MARK:
         return f"湿润印记×{params.get('stacks', 1)}"
+    if t == E.DRAGON_MARK:
+        return f"龙噬印记×{params.get('stacks', 1)}"
+    if t == E.WIND_MARK:
+        return f"风起印记×{params.get('stacks', 1)}"
+    if t == E.CHARGE_MARK:
+        return f"蓄电印记×{params.get('stacks', 1)}"
+    if t == E.SOLAR_MARK:
+        return f"光合印记×{params.get('stacks', 1)}"
+    if t == E.ATTACK_MARK:
+        return f"攻击印记×{params.get('stacks', 1)}"
+    if t == E.SLOW_MARK:
+        return f"减速印记×{params.get('stacks', 1)}"
+    if t == E.SLUGGISH_MARK:
+        return f"迟缓印记×{params.get('stacks', 1)}"
+    if t == E.SPIRIT_MARK:
+        return f"降灵印记×{params.get('stacks', 1)}"
+    if t == E.METEOR_MARK:
+        return f"星陨印记×{params.get('stacks', 1)}"
+    if t == E.THORN_MARK:
+        return f"荆刺印记×{params.get('stacks', 1)}"
+    if t == E.DISPEL_ENEMY_MARKS:
+        return "驱散敌方印记"
+    if t == E.CONVERT_MARKS_TO_BURN:
+        return f"印记→灼烧×{params.get('ratio', 3)}"
+    if t == E.DISPEL_MARKS_TO_BURN:
+        return f"驱散印记→灼烧×{params.get('burn_per_mark', 5)}"
+    if t == E.CONSUME_MARKS_HEAL:
+        return "食腐(驱散回血)"
+    if t == E.MARKS_TO_METEOR:
+        return "印记→星陨"
+    if t == E.STEAL_MARKS:
+        return "偷取印记"
+    if t == E.ENERGY_COST_PER_ENEMY_MARK:
+        return "印记减能耗"
     if t == E.DAMAGE_REDUCTION:
         return f"减伤{_pct_text(params.get('pct', 0) * 100)}"
     if t == E.FORCE_SWITCH:
@@ -833,7 +867,21 @@ async def receive_player_action(ws: WebSocket, msg: dict):
     await ws.send_text(json.dumps({"type": "ai_thinking"}))
     try:
         loop     = asyncio.get_running_loop()
-        action_b = await loop.run_in_executor(None, session.mcts_b.get_best_action, state)
+        # BUG #1 FIX: Add 30s timeout to MCTS decision to prevent indefinite hanging
+        action_b = await asyncio.wait_for(
+            loop.run_in_executor(None, session.mcts_b.get_best_action, state),
+            timeout=30.0
+        )
+    except asyncio.TimeoutError:
+        import traceback as _tb
+        err_msg = "MCTS决策超时（>30s）"
+        print(f"[AI TIMEOUT] {err_msg}", flush=True)
+        session.add_log(f"  ⏱️  {err_msg}，使用随机决策")
+        # 降级：随机选合法动作
+        from src.battle import get_actions
+        fallback_actions = get_actions(state, "b")
+        import random
+        action_b = random.choice(fallback_actions)
     except Exception as e:
         import traceback as _tb
         err = _tb.format_exc()
@@ -921,9 +969,20 @@ async def receive_player_action(ws: WebSocket, msg: dict):
                     force_switch_prompt=True,
                 )))
                 events = []  # 事件已发送，清空避免重复
-                # 等待玩家发送换人消息
-                raw = await ws.receive_text()
-                msg2 = json.loads(raw)
+                # 等待玩家发送换人消息（BUG #2 FIX: Add 15s timeout to prevent indefinite wait）
+                try:
+                    raw = await asyncio.wait_for(ws.receive_text(), timeout=15.0)
+                    msg2 = json.loads(raw)
+                except asyncio.TimeoutError:
+                    session.add_log(f"  ⏱️  玩家选择换人超时（>15s），AI自动选择")
+                    # 超时，AI代选
+                    chosen = _ai_switch_callback(state, state.team_a, req["alive"])
+                    msg2 = {"type": "switch", "index": chosen}
+                except json.JSONDecodeError:
+                    session.add_log(f"  ❌ 换人消息格式错误，AI自动选择")
+                    chosen = _ai_switch_callback(state, state.team_a, req["alive"])
+                    msg2 = {"type": "switch", "index": chosen}
+                
                 if msg2.get("type") == "switch" and msg2.get("index") in req["alive"]:
                     chosen = msg2["index"]
                     if req["team"] == "a":

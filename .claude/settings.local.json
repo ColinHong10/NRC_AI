@@ -5,5 +5,18 @@
       "Bash(python -u tests/test_battle_fixes.py)",
       "Bash(echo \"DONE:$?\")"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -n --rawfile content ROADMAP.md '{\"hookSpecificOutput\": {\"hookEventName\": \"SessionStart\", \"additionalContext\": (\"=== 📋 项目路线图已加载（ROADMAP.md）===\\n\" + $content)}}'",
+            "statusMessage": "读取项目路线图..."
+          }
+        ]
+      }
+    ]
   }
 }

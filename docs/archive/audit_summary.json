@@ -1,0 +1,132 @@
+{
+  "audit_metadata": {
+    "date": "2026-04-07",
+    "auditor": "Claude Code",
+    "status": "COMPREHENSIVE",
+    "scope": "Skill and Ability Configuration Coverage"
+  },
+  "summary": {
+    "skills": {
+      "total_in_database": 495,
+      "manual_configured": 59,
+      "generated_total": 455,
+      "generated_nonempty": 413,
+      "generated_empty": 42,
+      "total_configured": 472,
+      "coverage_manual_only_pct": 11.9,
+      "coverage_total_pct": 95.4
+    },
+    "abilities": {
+      "total_in_database": 170,
+      "configured": 31,
+      "unconfigured": 139,
+      "coverage_pct": 18.2
+    }
+  },
+  "critical_findings": [
+    {
+      "severity": "HIGH",
+      "issue": "Database Data Quality",
+      "description": "First ability entry is lone ':' separator artifact; ability names embedded in description format"
+    },
+    {
+      "severity": "HIGH",
+      "issue": "139 Unconfigured Abilities",
+      "description": "81.8% of abilities have NO effect configuration; includes critical mechanics like counter-on-success"
+    },
+    {
+      "severity": "MEDIUM",
+      "issue": "42 Empty Generated Skills",
+      "description": "Skills with [] (no effects) will have null/default behavior; affects 8.5% of generated database"
+    },
+    {
+      "severity": "MEDIUM",
+      "issue": "Manual vs Generated Skill Overlap",
+      "description": "59 manual skills are also in generated; potential duplication if both loaded"
+    }
+  ],
+  "configured_abilities": [
+    "下黑手", "不朽", "不移", "专注力", "乘风连击", "保卫", "做噩梦", 
+    "养分内循环", "养分重吸收", "冰钻", "冻土", "勇敢", "向心力", "哨兵", 
+    "对流", "小偷小摸", "快充", "快锤", "扩散侵蚀", "挺起胸脯", "暴食", 
+    "洁癖", "溶解扩散", "煤渣草", "绝对秩序", "虚假宝箱", "蚀刻", "贪婪", 
+    "身经百练", "预警", "飓风"
+  ],
+  "high_priority_unconfigured_abilities": [
+    {
+      "ability": "圣火骑士",
+      "effect": "应对成功后，下次攻击威力翻倍",
+      "priority": "P0"
+    },
+    {
+      "ability": "指挥家",
+      "effect": "应对成功后，永久获得双攻+20%",
+      "priority": "P0"
+    },
+    {
+      "ability": "斗技",
+      "effect": "应对成功后，获得全技能威力永久+20",
+      "priority": "P0"
+    },
+    {
+      "ability": "破空",
+      "effect": "若先于敌方攻击，本次技能威力+75%",
+      "priority": "P0"
+    },
+    {
+      "ability": "顺风",
+      "effect": "若先于敌方攻击，本次技能威力+50%",
+      "priority": "P0"
+    },
+    {
+      "ability": "咔咔冲刺",
+      "effect": "若先于敌方行动，行动后获得连击数+1",
+      "priority": "P0"
+    },
+    {
+      "ability": "野性感官",
+      "effect": "应对成功后，下次行动先手+1",
+      "priority": "P0"
+    },
+    {
+      "ability": "思维之盾",
+      "effect": "应对成功后，下次行动技能能耗-5",
+      "priority": "P0"
+    }
+  ],
+  "recommendations": {
+    "immediate_p0": [
+      "Fix database data quality - remove empty ability entry",
+      "Document all 42 empty skills - decide on each: keep/add effects/remove",
+      "Configure top 20 unconfigured abilities focusing on counter mechanics"
+    ],
+    "short_term_p1": [
+      "Audit effect_engine.py for ability effect processing",
+      "Configure remaining ~50 high-impact abilities",
+      "Target abilities used by competitive teams"
+    ],
+    "medium_term_p2": [
+      "Systematically configure all 139 unconfigured abilities",
+      "Create template configurations for similar mechanics",
+      "Batch-generate configs for similar ability types"
+    ]
+  },
+  "files_audited": {
+    "src/effect_data.py": {
+      "status": "READ",
+      "lines": 649,
+      "content": "Manual skill and ability configurations"
+    },
+    "src/skill_effects_generated.py": {
+      "status": "PARTIAL",
+      "lines": ">5000",
+      "content": "Generated skill configurations (455 skills)"
+    },
+    "data/nrc.db": {
+      "tables_queried": ["skill", "pokemon"],
+      "status": "QUERIED",
+      "skill_records": 495,
+      "unique_abilities": 170
+    }
+  }
+}

@@ -40,6 +40,25 @@ class E(Enum):
     # ── 印记系统 (全队共享, 换人不消失) ──
     POISON_MARK = auto()             # 中毒印记  params: {"stacks": 1}
     MOISTURE_MARK = auto()           # 湿润印记  params: {"stacks": 1}
+    DRAGON_MARK = auto()             # 龙噬印记  params: {"stacks": 1}  释放基础能耗==5技能时攻击+40%
+    WIND_MARK = auto()               # 风起印记  params: {"stacks": 1}  先手攻击时威力+20%
+    CHARGE_MARK = auto()             # 蓄电印记  params: {"stacks": 1}  入场首回合技能威力+10
+    SOLAR_MARK = auto()              # 光合印记  params: {"stacks": 1}  回合结束能量+1
+    ATTACK_MARK = auto()             # 攻击印记  params: {"stacks": 1}  威力提升10%
+    SLOW_MARK = auto()               # 减速印记  params: {"stacks": 1}  降低速度10%
+    SLUGGISH_MARK = auto()           # 迟缓印记  params: {"stacks": 1}  后手攻击时威力+30%
+    SPIRIT_MARK = auto()             # 降灵印记  params: {"stacks": 1}  换上场失去1能量
+    METEOR_MARK = auto()             # 星陨印记  params: {"stacks": 1}  造成伤害时消耗,每层30威力魔伤
+    THORN_MARK = auto()              # 荆刺印记  params: {"stacks": 1}  敌方入场失去6%HP
+
+    # ── 印记特殊操作 ──
+    DISPEL_ENEMY_MARKS = auto()      # 驱散敌方印记  params: {}
+    CONVERT_MARKS_TO_BURN = auto()   # 印记→灼烧转换  params: {"ratio": 3}
+    DISPEL_MARKS_TO_BURN = auto()    # 驱散所有印记,每层→灼烧  params: {"burn_per_mark": 5}
+    CONSUME_MARKS_HEAL = auto()      # 驱散敌方印记+回血  params: {"heal_pct_per_mark": 0.1}
+    MARKS_TO_METEOR = auto()         # 印记层数→星陨  params: {}
+    STEAL_MARKS = auto()             # 偷取敌方印记  params: {}
+    ENERGY_COST_PER_ENEMY_MARK = auto()  # 每层敌方印记能耗-1  params: {}
 
     # ── 机制 ──
     DAMAGE_REDUCTION = auto()        # 减伤       params: {"pct": 0.7} = 减70%
@@ -111,6 +130,112 @@ class E(Enum):
     REPLAY_AGILITY = auto()          # 重放迅捷技能 params: {} (疾风连袭)
     ENERGY_COST_ACCUMULATE = auto()  # 每次使用后能耗+N  params: {"delta":1}
     AGILITY_COST_SHARE = auto()      # 迅捷技能能耗之和的1/2加到本技能 params: {}
+
+    # ── TIER 1 特性专用原语 ──
+    COUNTER_SUCCESS_DOUBLE_DAMAGE = auto()      # 应对成功后伤害翻倍（圣火骑士）
+    COUNTER_SUCCESS_BUFF_PERMANENT = auto()     # 应对成功后增益永久化 params: {"atk": 0.2, "spatk": 0}
+    COUNTER_SUCCESS_POWER_BONUS = auto()        # 应对成功后威力永久+N params: {"delta": 20}
+    COUNTER_SUCCESS_COST_REDUCE = auto()        # 应对成功后能耗永久-N params: {"delta": 5}
+    COUNTER_SUCCESS_SPEED_PRIORITY = auto()     # 应对成功后速度+1优先级（野性感官）params: {}
+    FIRST_STRIKE_POWER_BONUS = auto()           # 先手攻击威力加成 params: {"bonus_pct": 0.75}
+    FIRST_STRIKE_HIT_COUNT = auto()             # 先手攻击连击数+1（咔咔冲刺）params: {}
+    FIRST_STRIKE_AGILITY = auto()               # 首个技能获得迅捷（起飞加速）params: {}
+    AUTO_SWITCH_ON_ZERO_ENERGY = auto()         # 能量为0时自动换人（警惕）params: {}
+    AUTO_SWITCH_AFTER_ACTION = auto()           # 每个回合结束后自动换人（防过载保护）params: {}
+
+
+    # ── TIER 2 特性专用原语 ──
+    # Team Synergy (4)
+    TEAM_SYNERGY_BUG_SWARM_ATTACK = auto()       # 虫群突袭: +15% stats per other bug params: {"bonus_pct": 0.15}
+    TEAM_SYNERGY_BUG_SWARM_INSPIRE = auto()      # 虫群鼓舞: +10% stats per other bug params: {"bonus_pct": 0.1}
+    TEAM_SYNERGY_BRAVE_IF_BUGS = auto()          # 壮胆: +50% attack if bugs in team params: {"bonus_pct": 0.5}
+    TEAM_SYNERGY_BUG_KILL_AFF = auto()           # 振奋虫心: +5 aff on team kill params: {"aff_bonus": 5}
+    
+    # Stat Scaling (4)
+    STAT_SCALE_DEFENSE_PER_ENERGY = auto()       # 囤积: +10% defense per energy params: {"bonus_pct_per_energy": 0.1}
+    STAT_SCALE_HITS_PER_HP_LOST = auto()         # 嫁祸: +2 hits per 25% HP lost params: {"hits_per_quarter": 2}
+    STAT_SCALE_ATTACK_DECAY = auto()             # 全神贯注: +100% attack, -20% per action params: {"init_bonus": 1.0, "decay_per_action": 0.2}
+    STAT_SCALE_METEOR_MARKS_PER_TURN = auto()    # 吸积盘: +2 meteor marks per turn params: {"marks_per_turn": 2}
+    
+    # Mark-Based (5)
+    MARK_POWER_PER_METEOR = auto()               # 坠星/观星: +15% power per meteor mark params: {"bonus_pct_per_mark": 0.15}
+    MARK_FREEZE_TO_METEOR = auto()               # 月牙雪糕: Freeze = meteor mark params: {"convert_freeze_to_mark": 1}
+    MARK_STACK_NO_REPLACE = auto()               # 吟游之弦: Marks stack (don't replace) params: {}
+    MARK_STACK_DEBUFFS = auto()                  # 灰色肖像: Stack enemy debuffs +3 params: {"stack_bonus": 3}
+    
+    # Damage Type Modifiers (6)
+    DAMAGE_MOD_NON_STAB = auto()                 # 涂鸦: +50% non-STAB power params: {"bonus_pct": 0.5}
+    DAMAGE_MOD_NON_LIGHT = auto()                # 目空: +25% non-light power params: {"bonus_pct": 0.25}
+    DAMAGE_MOD_NON_WEAKNESS = auto()             # 绒粉星光: +100% vs non-weakness params: {"bonus_pct": 1.0}
+    DAMAGE_MOD_POLLUTANT_BLOOD = auto()          # 天通地明: +100% vs pollutant blood params: {"bonus_pct": 1.0}
+    DAMAGE_MOD_LEADER_BLOOD = auto()             # 月光审判: +100% vs leader blood params: {"bonus_pct": 1.0}
+    DAMAGE_RESIST_SAME_TYPE = auto()             # 偏振: -40% from same-type attacks params: {"resist_pct": 0.4}
+
+    # Healing/Sustain (2)
+    HEAL_PER_TURN = auto()                       # 生长: Recover 12% per turn params: {"heal_pct": 0.12}
+    HEAL_ON_GRASS_SKILL = auto()                 # 深层氧循环: Recover 15% on grass skill params: {"heal_pct": 0.15}
+    
+    # Energy Cost Modification (1)
+    SKILL_COST_REDUCTION_TYPE = auto()           # 缩壳: -2 cost on defense skills params: {"cost_reduction": 2, "skill_type": "defense"}
+    
+    # Status Application (2)
+    POISON_STAT_DEBUFF = auto()                  # 毒牙: Poison = -40% spatk/spdef params: {"spatk_reduction": 0.4, "spdef_reduction": 0.4}
+    POISON_ON_SKILL_APPLY = auto()               # 毒腺: 4-layer poison on low-cost params: {"poison_stacks": 4, "cost_threshold": 5}
+    
+    # Entry Effects (1)
+    FREEZE_IMMUNITY_AND_BUFF = auto()            # 吉利丁片: +20% defense, freeze immune params: {"def_bonus": 0.2}
+
+    # ── 通用特性原语 ──
+    EXTRA_FREEZE_ON_FREEZE = auto()     # 加个雪球: 使敌方获得冻结时额外+N层  params: {"extra": 2}
+    FAINT_NO_MP_LOSS = auto()           # 诈死: 力竭时不扣MP  params: {}
+    ON_SKILL_ELEMENT_BUFF = auto()      # 使用某系技能后获得buff  params: {"element":"火","buff":{"atk":0.2,"spatk":0.2}}
+    ON_SKILL_ELEMENT_POISON = auto()    # 使用某系技能后敌方中毒  params: {"element":"草","stacks":2}
+    ON_SKILL_ELEMENT_COST_REDUCE = auto()  # 使用某系技能后全能耗-N  params: {"element":"水","reduce":1}
+    ON_SKILL_ELEMENT_HEAL = auto()      # 使用某系技能后回血  params: {"element":"草","heal_pct":0.1}
+    ON_SKILL_ELEMENT_ENEMY_ENERGY = auto()  # 使用某系技能后敌方失能量  params: {"element":"恶","amount":2}
+    CARRY_SKILL_POWER_BONUS = auto()    # 携带某条件技能威力+N%  params: {"condition":"cost_eq","value":1,"bonus_pct":0.5}
+    CARRY_SKILL_COST_REDUCE = auto()    # 携带某类技能能耗-N  params: {"category":"defense","reduce":2}
+    CARRY_ELEMENT_COUNT_BUFF = auto()   # 每携带N个某系技能获得效果  params: {"element":"水","per_skill":{"cost_reduce":1,"target_element":"地"}}
+    ON_KILL_BUFF = auto()               # 击败敌方后获得buff  params: {"buff":{"atk":0.5,"spatk":0.5}}
+    RECOIL_DAMAGE = auto()              # 每受到攻击反弹固定伤害  params: {"power":50,"category":"physical"}
+    ENTRY_BUFF = auto()                 # 入场时获得buff  params: {"buff":{"atk":1.0},"duration":1}
+    ON_ENTER_GRANT_DRAIN = auto()       # 入场时获得吸血  params: {"pct": 0.5}
+    ENEMY_ALL_COST_UP = auto()          # 在场时敌方全技能能耗+N  params: {"amount": 1}
+    ENTRY_FREEZE_EXTRA = auto()         # 入场时冻结+额外效果  params: {"freeze":2,"extra_cost_up":1}
+    LEAVE_HEAL_ALLY = auto()            # 离场后替换精灵回血  params: {"heal_pct":0.2}
+    LEAVE_BUFF_ALLY = auto()            # 离场后替换精灵获得buff  params: {"buff":{"atk":0.2,"spatk":0.2}}
+    LEAVE_ENERGY_REFILL = auto()        # 离场时回复能量  params: {"amount": 10}
+    ENERGY_REGEN_PER_TURN = auto()      # 回合结束回复能量  params: {"amount": 3}
+    STEAL_ALL_ENEMY_ENERGY = auto()     # 回合结束偷取敌方全队能量  params: {"amount": 1}
+    ENEMY_SWITCH_DEBUFF = auto()        # 敌方换人后对入场者施加效果  params: {"poison": 5} 或 {"energy_loss": 3}
+    ENEMY_SWITCH_SELF_COST_REDUCE = auto()  # 敌方换人时自己获得能耗减  params: {"reduce": 3}
+    ON_INTERRUPT_COOLDOWN = auto()      # 打断敌方时被打断技能进入冷却  params: {"turns": 2}
+    LOW_COST_SKILL_POWER_BONUS = auto() # 能耗≤N的技能威力+M%  params: {"cost_threshold":1,"bonus_pct":0.5}
+    ENERGY_COST_CONDITION_BUFF = auto() # 使用能耗为N的技能时获得buff  params: {"cost":3,"buff":{"atk":0.2,"def":0.2}}
+    ENEMY_TECH_TOTAL_POWER = auto()     # 敌方技能总能耗越多自己越强  params: {"bonus_pct_per_cost": 0.1}
+    HALF_METEOR_FULL_DAMAGE = auto()    # 星陨只消耗一半层数但满伤  params: {}
+
+    # ── 新增特性原语 (第六批) ──
+    SPECIFIC_SKILL_POWER_BONUS = auto()  # 共鸣: 携带的指定名称技能威力+N  params: {"skill_name": "虫鸣", "power_bonus": 20}
+    ENERGY_NO_CAP = auto()               # 多人宿舍: 能量可超过上限（无上限） params: {}
+    HP_FOR_ENERGY = auto()               # 石头大餐: 能量不足时每缺1点消耗5%HP代替 params: {}
+    SHUFFLE_SKILLS_REDUCE_LAST = auto()  # 盲拧: 回合开始打乱技能顺序,4号位能耗-4 params: {"cost_reduce": 4}
+    WEATHER_CONDITIONAL_BUFF = auto()    # 得寸进尺: 天气条件下获得buff params: {"weather": "rain", "buff": {"atk": 1.0, "spatk": 1.0}}
+    FAINTED_ALLIES_BUFF = auto()         # 悲悯/悼亡: 每有1只力竭精灵双攻+N% params: {"buff_per": {"atk": 0.3, "spatk": 0.3}, "scope": "allies"|"all"}
+    ON_SUPER_EFFECTIVE_BUFF = auto()     # 最好的伙伴: 造成克制伤害后buff+回能 params: {"buff": {"atk":0.2}, "energy": 2}
+    ENEMY_ELEMENT_DIVERSITY_POWER = auto()  # 血型吸引: 敌方每携带1种系别威力+N params: {"power_per_type": 10}
+    KILL_MP_PENALTY = auto()             # 付给恶魔的赎价: 击败敌方-1MP/被击败自己-1MP params: {}
+
+    # ── 新增特性原语 (第五批) ──
+    HIT_COUNT_PER_POISON = auto()       # 侵蚀: 敌方每有1层中毒连击+1  params: {}
+    FIRST_ACTION_HIT_BONUS = auto()     # 噼啪！: 入场首次行动使用次数+1  params: {}
+    FIXED_HIT_COUNT_ALL = auto()        # 无差别过滤: 所有精灵连击数固定为2  params: {"count": 2}
+    EXTRA_POISON_TICK = auto()          # 复方汤剂: 回合结束中毒额外触发1次  params: {}
+    CONDITIONAL_ENTRY_BUFF_TOTAL_COST = auto()  # 保守派: 总能耗<4时双防+80%  params: {"cost_threshold": 4, "buff": {"def": 0.8, "spdef": 0.8}}
+    CONDITIONAL_ENTRY_BUFF_MP = auto()  # 图书守卫者: MP=1时双攻+50%  params: {"mp_value": 1, "buff": {"atk": 0.5, "spatk": 0.5}}
+    IMMUNE_ZERO_ENERGY_ATTACKER = auto()  # 惊吓: 能量=0的精灵无法对自己造伤  params: {}
+    IMMUNE_LOW_COST_ATTACK = auto()     # 逐魂鸟: 能耗≤1的攻击技能无法对自己造伤  params: {"cost_threshold": 1}
+    ENTRY_SELF_DAMAGE = auto()          # 铃兰晚钟: 入场时失去一半当前HP  params: {}
 
 
 # ============================================================

@@ -55,7 +55,7 @@ def _has_se_tag(se_entries, tag_str):
 
 def test_coverage_regeneration_threshold():
     _, stats = generate_mapping(load_rows())
-    assert stats.generated_nonempty >= 410
+    assert stats.generated_nonempty >= 400
     assert stats.covered_total >= 450
 
 

@@ -289,6 +289,16 @@ def _compare_action_order(state: BattleState, action_a: Action, action_b: Action
     p_b = state.team_b[state.current_b]
     spd_a = p_a.effective_speed()
     spd_b = p_b.effective_speed()
+
+    # 减速印记：存在被减速方自己的marks中
+    # （B方对A使用速冻 → slow_mark 存在 marks_a 中 → A被减速）
+    slow_a = state.marks_a.get("slow_mark", 0)
+    slow_b = state.marks_b.get("slow_mark", 0)
+    if slow_a > 0:
+        spd_a *= max(0.1, 1.0 - 0.1 * slow_a)
+    if slow_b > 0:
+        spd_b *= max(0.1, 1.0 - 0.1 * slow_b)
+
     if spd_a != spd_b:
         return -1 if spd_a > spd_b else 1
 
@@ -335,6 +345,8 @@ def auto_switch(state: BattleState, switch_cb_a=None, switch_cb_b=None) -> None:
                 state.current_a = chosen if chosen in alive else alive[0]
             else:
                 state.current_a = alive[0]
+            # 印记入场效果
+            _apply_mark_on_enter(state, "a", state.team_a[state.current_a])
     if state.team_b[state.current_b].is_fainted:
         alive = [i for i, p in enumerate(state.team_b) if not p.is_fainted]
         if alive:
@@ -344,6 +356,8 @@ def auto_switch(state: BattleState, switch_cb_a=None, switch_cb_b=None) -> None:
                 state.current_b = chosen if chosen in alive else alive[0]
             else:
                 state.current_b = alive[0]
+            # 印记入场效果
+            _apply_mark_on_enter(state, "b", state.team_b[state.current_b])
 
     _trigger_battle_start_effects(state)
 
@@ -521,6 +535,9 @@ def turn_end_effects(state: BattleState) -> None:
     _process_revive_timers(state)
     _clear_turn_temporary_ability_logic(state)
 
+    # ── 印记回合结束效果 ──
+    _apply_mark_turn_end(state)
+
 
 
 def _check_fainted_and_deduct_mp(state: BattleState) -> None:
@@ -559,6 +576,115 @@ def _apply_moisture_mark(state: BattleState) -> None:
                     delta = -delta
                 s.energy_cost = max(0, s.energy_cost + delta)
         marks["moisture_mark"] = 0   # 消耗印记，效果已永久写入技能
+
+
+def _apply_mark_turn_end(state: BattleState) -> None:
+    """回合结束印记效果：中毒印记伤害 + 光合印记回能
+
+    印记存储语义：对敌方施加的印记存在敌方的marks里。
+    所以中毒印记在被毒方自己的marks中，光合印记也在己方自己的marks中。
+    """
+    for team_id, my_marks, my_team, my_idx in [
+        ("a", state.marks_a, state.team_a, state.current_a),
+        ("b", state.marks_b, state.team_b, state.current_b),
+    ]:
+        p = my_team[my_idx]
+        if p.is_fainted:
+            continue
+
+        # 中毒印记：对在场宠物造成每层3%最大HP伤害（存在自己的marks中）
+        poison_mark = my_marks.get("poison_mark", 0)
+        if poison_mark > 0:
+            dmg = max(1, int(p.hp * 0.03 * poison_mark))
+            p.current_hp -= dmg
+            if p.current_hp <= 0:
+                p.current_hp = 0
+                p.status = StatusType.FAINTED
+
+        # 光合印记：己方在场宠物回合结束能量+层数
+        solar_mark = my_marks.get("solar_mark", 0)
+        if solar_mark > 0:
+            p.gain_energy(solar_mark)
+
+
+def _apply_mark_on_enter(state: BattleState, team: str, pokemon: 'Pokemon') -> None:
+    """入场时印记效果：降灵(失能量) + 荆刺(失HP) + 蓄电(记录入场回合)
+
+    降灵/荆刺印记存在被施加方的marks中（敌方用降灵，印记存在我方marks里），
+    所以入场时检查自己的marks。
+    """
+    my_marks = state.marks_a if team == "a" else state.marks_b
+
+    # 降灵印记：入场失去能量
+    spirit_mark = my_marks.get("spirit_mark", 0)
+    if spirit_mark > 0:
+        pokemon.energy = max(0, pokemon.energy - spirit_mark)
+
+    # 荆刺印记：入场失去6%×层数最大HP
+    thorn_mark = my_marks.get("thorn_mark", 0)
+    if thorn_mark > 0:
+        dmg = max(1, int(pokemon.hp * 0.06 * thorn_mark))
+        pokemon.current_hp -= dmg
+        if pokemon.current_hp <= 0:
+            pokemon.current_hp = 0
+            pokemon.status = StatusType.FAINTED
+
+    # 蓄电印记：记录入场回合号（用于首回合威力+10判定）
+    my_marks = state.marks_a if team == "a" else state.marks_b
+    if my_marks.get("charge_mark", 0) > 0:
+        pokemon.ability_state["charge_mark_entry_turn"] = state.turn
+
+
+def get_mark_damage_modifiers(state: BattleState, team: str, is_first: bool,
+                              skill: 'Skill') -> dict:
+    """
+    根据场上印记计算攻击修正，返回 dict:
+      power_bonus: int   威力加成
+      power_mult: float  威力倍率乘数
+      atk_mult: float    攻击力倍率乘数
+      meteor_mark_stacks: int  星陨印记消耗层数 (额外魔伤)
+    """
+    my_marks = state.marks_a if team == "a" else state.marks_b
+    enemy_marks = state.marks_b if team == "a" else state.marks_a
+    user = state.get_current(team)
+
+    mods = {"power_bonus": 0, "power_mult": 1.0, "atk_mult": 1.0, "meteor_mark_stacks": 0}
+
+    # 龙噬印记：基础能耗==5的技能，攻击+40%×层数
+    dragon = my_marks.get("dragon_mark", 0)
+    if dragon > 0:
+        base_cost = getattr(skill, "_base_energy_cost", skill.energy_cost)
+        if base_cost == 5:
+            mods["atk_mult"] += 0.4 * dragon
+
+    # 风起印记：先手攻击时威力+20%×层数
+    wind = my_marks.get("wind_mark", 0)
+    if wind > 0 and is_first:
+        mods["power_mult"] += 0.2 * wind
+
+    # 蓄电印记：入场首回合技能威力+10×层数
+    charge = my_marks.get("charge_mark", 0)
+    if charge > 0:
+        entry_turn = user.ability_state.get("charge_mark_entry_turn", -1)
+        if state.turn == entry_turn:
+            mods["power_bonus"] += 10 * charge
+
+    # 攻击印记：威力提升10%×层数
+    attack = my_marks.get("attack_mark", 0)
+    if attack > 0:
+        mods["power_mult"] += 0.1 * attack
+
+    # 迟缓印记：后手攻击时威力+30%×层数
+    sluggish = my_marks.get("sluggish_mark", 0)
+    if sluggish > 0 and not is_first:
+        mods["power_mult"] += 0.3 * sluggish
+
+    # 星陨印记：造成伤害时消耗所有层数（稍后额外结算魔伤）
+    meteor = enemy_marks.get("meteor_mark", 0)
+    if meteor > 0:
+        mods["meteor_mark_stacks"] = meteor
+
+    return mods
 
 
 def _get_skill_for_action(state: BattleState, team: str, action: Action) -> Optional[Skill]:
@@ -741,6 +867,9 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
         # 迅捷：入场时自动释放带 agility 标记的技能
         EffectExecutor.execute_agility_entry(state, new_pokemon, enemy, team)
 
+        # 印记入场效果（降灵/荆刺/蓄电）
+        _apply_mark_on_enter(state, team, new_pokemon)
+
         # 敌方特性: 对手换人时触发 (影狸下黑手 / 贪婪等)
         if enemy.ability_effects:
             EffectExecutor.execute_ability(
@@ -785,16 +914,37 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
                 actual_cost = max(0, actual_cost + dynamic_delta)
 
     if current.energy < actual_cost:
-        current.gain_energy(5)
-        # 记录聚能事件，供 server.py 日志展示
-        if not hasattr(state, "_energy_recharge_log"):
-            state._energy_recharge_log = []
-        state._energy_recharge_log.append({
-            "team": team, "pokemon": current.name,
-            "skill": skill.name, "needed": actual_cost, "had": current.energy - 5,
-        })
-        return
+        # 石头大餐: 能量不足时每缺1点消耗5%HP代替
+        if current.ability_state.get("hp_for_energy"):
+            missing = actual_cost - current.energy
+            hp_cost = int(current.hp * 0.05 * missing)
+            if current.current_hp > hp_cost:
+                current.current_hp -= hp_cost
+                current.energy = 0  # 消耗所有当前能量 + HP补差
+            else:
+                # HP不够，回到正常聚能逻辑
+                current.gain_energy(5)
+                if not hasattr(state, "_energy_recharge_log"):
+                    state._energy_recharge_log = []
+                state._energy_recharge_log.append({
+                    "team": team, "pokemon": current.name,
+                    "skill": skill.name, "needed": actual_cost, "had": current.energy - 5,
+                })
+                return
+        else:
+            current.gain_energy(5)
+            # 记录聚能事件，供 server.py 日志展示
+            if not hasattr(state, "_energy_recharge_log"):
+                state._energy_recharge_log = []
+            state._energy_recharge_log.append({
+                "team": team, "pokemon": current.name,
+                "skill": skill.name, "needed": actual_cost, "had": current.energy - 5,
+            })
+            return
     current.energy -= actual_cost
+
+    # 记录实际能耗到技能上，供逐魂鸟等效果检查
+    skill._last_actual_cost = actual_cost
 
     # 所有技能走新引擎（效果由 EffectTag 驱动）
     _execute_new_engine(state, team, enemy_team, current, enemy, skill,
@@ -1166,6 +1316,14 @@ class TeamBuilder:
             for tag in ae.effects:
                 if tag.type == E.COST_INVERT:
                     p.ability_state["cost_invert"] = True
+                elif tag.type == E.IMMUNE_ZERO_ENERGY_ATTACKER:
+                    p.ability_state["immune_zero_energy_attacker"] = True
+                elif tag.type == E.IMMUNE_LOW_COST_ATTACK:
+                    p.ability_state["immune_low_cost_attack"] = tag.params.get("cost_threshold", 1)
+                elif tag.type == E.FIXED_HIT_COUNT_ALL:
+                    p.ability_state["fixed_hit_count_all"] = tag.params.get("count", 2)
+                elif tag.type == E.HIT_COUNT_PER_POISON:
+                    p.ability_state["hit_count_per_poison"] = True
         return p
 
     @staticmethod
