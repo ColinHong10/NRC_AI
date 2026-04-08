@@ -82,24 +82,47 @@ def _find_skill_index(pokemon: "Pokemon", skill: "Skill") -> int:
     return -1
 
 
+def _share_heal_to_bench(ctx: "Ctx", heal: int) -> None:
+    """系统发育：将回复的HP等量随机分配给场下存活精灵"""
+    team_list = ctx.state.team_a if ctx.team == "a" else ctx.state.team_b
+    current_idx = ctx.state.current_a if ctx.team == "a" else ctx.state.current_b
+    bench = [p for i, p in enumerate(team_list) if i != current_idx and not p.is_fainted]
+    if bench:
+        target = random.choice(bench)
+        target.current_hp = min(target.hp, target.current_hp + heal)
+
+
+def _share_energy_to_bench(ctx: "Ctx", amount: int) -> None:
+    """系统发育：将获得的能量等量随机分配给场下存活精灵"""
+    team_list = ctx.state.team_a if ctx.team == "a" else ctx.state.team_b
+    current_idx = ctx.state.current_a if ctx.team == "a" else ctx.state.current_b
+    bench = [p for i, p in enumerate(team_list) if i != current_idx and not p.is_fainted]
+    if bench:
+        target = random.choice(bench)
+        target.gain_energy(amount)
+
+
 def _apply_buff(pokemon: "Pokemon", params: Dict) -> None:
     """应用正向属性修改（写入 *_up 字段）"""
+    # 营养液泡：获得增益时额外+N层
+    extra = pokemon.ability_state.get("buff_extra_layers", 0)
+    multiplier = 1 + extra if extra > 0 else 1
     if "atk" in params:
-        pokemon.atk_up += params["atk"]
+        pokemon.atk_up += params["atk"] * multiplier
     if "def" in params:
-        pokemon.def_up += params["def"]
+        pokemon.def_up += params["def"] * multiplier
     if "spatk" in params:
-        pokemon.spatk_up += params["spatk"]
+        pokemon.spatk_up += params["spatk"] * multiplier
     if "spdef" in params:
-        pokemon.spdef_up += params["spdef"]
+        pokemon.spdef_up += params["spdef"] * multiplier
     if "speed" in params:
-        pokemon.speed_up += params["speed"]
+        pokemon.speed_up += params["speed"] * multiplier
     if "all_atk" in params:
-        pokemon.atk_up += params["all_atk"]
-        pokemon.spatk_up += params["all_atk"]
+        pokemon.atk_up += params["all_atk"] * multiplier
+        pokemon.spatk_up += params["all_atk"] * multiplier
     if "all_def" in params:
-        pokemon.def_up += params["all_def"]
-        pokemon.spdef_up += params["all_def"]
+        pokemon.def_up += params["all_def"] * multiplier
+        pokemon.spdef_up += params["all_def"] * multiplier
 
 
 def _apply_debuff(pokemon: "Pokemon", params: Dict) -> None:
@@ -161,8 +184,12 @@ def _ability_name(pokemon: "Pokemon") -> str:
 
 
 def _adjust_cost_delta(pokemon: "Pokemon", delta: int) -> int:
-    """能耗增减调整：对流特性反转增减方向"""
-    return -delta if pokemon.ability_state.get("cost_invert") else delta
+    """能耗增减调整：对流特性反转增减方向，倾轧特性翻倍"""
+    if pokemon.ability_state.get("cost_invert"):
+        delta = -delta
+    if pokemon.ability_state.get("cost_change_double"):
+        delta = delta * 2
+    return delta
 
 
 def _iter_flat_tags_static(effects) -> list:
@@ -481,13 +508,20 @@ def _h_heal_hp(tag: EffectTag, ctx: Ctx) -> None:
     heal = int(ctx.user.hp * pct)
     if heal > 0:
         ctx.user.current_hp = min(ctx.user.hp, ctx.user.current_hp + heal)
+        # 系统发育：将等量回复随机分配给场下精灵
+        if ctx.user.ability_state.get("share_gains"):
+            _share_heal_to_bench(ctx, heal)
 
 
 def _h_heal_energy(tag: EffectTag, ctx: Ctx) -> None:
     if "set_to" in tag.params:
         ctx.user.energy = tag.params["set_to"]
     else:
-        ctx.user.gain_energy(tag.params.get("amount", 1))
+        amount = tag.params.get("amount", 1)
+        ctx.user.gain_energy(amount)
+        # 系统发育：将等量能量随机分配给场下精灵
+        if ctx.user.ability_state.get("share_gains"):
+            _share_energy_to_bench(ctx, amount)
 
 
 def _h_self_ko(tag: EffectTag, ctx: Ctx) -> None:
@@ -601,13 +635,40 @@ def _h_moisture_mark(tag: EffectTag, ctx: Ctx) -> None:
 
 
 def _h_mark_generic(tag: EffectTag, ctx: Ctx, mark_key: str) -> None:
-    """通用印记 handler：根据 target 参数放入对应队伍的 marks dict。"""
+    """通用印记 handler：根据 target 参数放入对应队伍的 marks dict。
+    
+    同一阵营（己方/敌方 marks dict）同时仅能存在1种正面印记和1种负面印记。
+    新印记会覆盖同类（正面/负面）中的旧印记。
+    """
     tgt = tag.params.get("target", "enemy")
     if tgt == "self":
         marks = ctx.state.marks_a if ctx.team == "a" else ctx.state.marks_b
     else:
         marks = ctx.state.marks_b if ctx.team == "a" else ctx.state.marks_a
+    
+    # 同类印记覆盖：施加印记时清除同一 marks dict 中已有的同类（正面/负面）印记
+    if mark_key in POSITIVE_MARKS:
+        for existing_key in list(marks.keys()):
+            if existing_key in POSITIVE_MARKS and existing_key != mark_key:
+                del marks[existing_key]
+    elif mark_key in NEGATIVE_MARKS:
+        for existing_key in list(marks.keys()):
+            if existing_key in NEGATIVE_MARKS and existing_key != mark_key:
+                del marks[existing_key]
+    
     marks[mark_key] = marks.get(mark_key, 0) + tag.params.get("stacks", 1)
+
+
+# 正面印记集合（同一阵营同时仅存1种，新覆盖旧）
+POSITIVE_MARKS = {
+    "moisture_mark", "dragon_mark", "wind_mark", "charge_mark",
+    "solar_mark", "attack_mark", "sluggish_mark", "momentum_mark",
+}
+
+# 负面印记集合（同一阵营同时仅存1种，新覆盖旧）
+NEGATIVE_MARKS = {
+    "poison_mark", "slow_mark", "spirit_mark", "meteor_mark", "thorn_mark",
+}
 
 
 def _h_dragon_mark(tag: EffectTag, ctx: Ctx) -> None:
@@ -639,6 +700,9 @@ def _h_meteor_mark(tag: EffectTag, ctx: Ctx) -> None:
 
 def _h_thorn_mark(tag: EffectTag, ctx: Ctx) -> None:
     _h_mark_generic(tag, ctx, "thorn_mark")
+
+def _h_momentum_mark(tag: EffectTag, ctx: Ctx) -> None:
+    _h_mark_generic(tag, ctx, "momentum_mark")
 
 
 # ── 印记特殊操作 handler ──
@@ -1260,6 +1324,126 @@ def _h_ability_compute(tag: EffectTag, ctx: Ctx) -> None:
         if not hasattr(pokemon, "ability_state"):
             pokemon.ability_state = {}
         pokemon.ability_state["swap_ally_zero_energy"] = True
+
+    # ── 第四轮技能修复: 特殊action ──
+
+    elif action == "swap_hp_ratio":
+        # 恶念交换：与敌方交换生命比例
+        target = ctx.target
+        if pokemon.hp > 0 and target.hp > 0:
+            my_ratio = pokemon.current_hp / pokemon.hp
+            enemy_ratio = target.current_hp / target.hp
+            pokemon.current_hp = max(1, int(pokemon.hp * enemy_ratio))
+            target.current_hp = max(1, int(target.hp * my_ratio))
+
+    elif action == "swap_buffs":
+        # 欺诈契约：与敌方交换增益和减益
+        target = ctx.target
+        for attr in ("atk_up", "atk_down", "def_up", "def_down",
+                     "spatk_up", "spatk_down", "spdef_up", "spdef_down",
+                     "speed_up", "speed_down"):
+            my_val = getattr(pokemon, attr, 0.0)
+            enemy_val = getattr(target, attr, 0.0)
+            setattr(pokemon, attr, enemy_val)
+            setattr(target, attr, my_val)
+
+    elif action == "swap_skills":
+        # 隐藏条款：与敌方交换携带的技能
+        target = ctx.target
+        pokemon.skills, target.skills = target.skills, pokemon.skills
+
+    elif action == "borrow_ally_skill":
+        # 借用：变成己方其他精灵的随机技能
+        team_list = ctx.state.team_a if ctx.team == "a" else ctx.state.team_b
+        current_idx = ctx.state.current_a if ctx.team == "a" else ctx.state.current_b
+        ally_skills = []
+        for i, p in enumerate(team_list):
+            if i != current_idx and not p.is_fainted:
+                ally_skills.extend(p.skills)
+        if ally_skills:
+            chosen = random.choice(ally_skills)
+            # 找到"借用"技能的位置并替换
+            for i, s in enumerate(pokemon.skills):
+                if s.name == "借用":
+                    pokemon.skills[i] = chosen.copy()
+                    break
+
+    elif action == "copy_enemy_skill":
+        # 取念：变成敌方随机技能，能耗-2
+        target = ctx.target
+        enemy_team = ctx.state.team_b if ctx.team == "a" else ctx.state.team_a
+        enemy_skills = []
+        for p in enemy_team:
+            if not p.is_fainted:
+                enemy_skills.extend(p.skills)
+        if enemy_skills:
+            chosen = random.choice(enemy_skills).copy()
+            cost_reduce = tag.params.get("cost_reduce", 2)
+            chosen.energy_cost = max(0, chosen.energy_cost - cost_reduce)
+            for i, s in enumerate(pokemon.skills):
+                if s.name == "取念":
+                    pokemon.skills[i] = chosen
+                    break
+
+    elif action == "copy_random_skill":
+        # 复写：变成自己未携带的随机技能，能耗-2
+        from src.skill_db import get_all_skill_names, get_skill
+        current_names = {s.name for s in pokemon.skills}
+        all_names = get_all_skill_names()
+        candidates = [n for n in all_names if n not in current_names]
+        if candidates:
+            chosen_name = random.choice(candidates)
+            chosen = get_skill(chosen_name)
+            if chosen:
+                chosen = chosen.copy()
+                cost_reduce = tag.params.get("cost_reduce", 2)
+                chosen.energy_cost = max(0, chosen.energy_cost - cost_reduce)
+                for i, s in enumerate(pokemon.skills):
+                    if s.name == "复写":
+                        pokemon.skills[i] = chosen
+                        break
+
+    elif action == "double_enemy_burn_and_tick":
+        # 充分燃烧：敌方灼烧翻倍+触发1次灼烧伤害
+        target = ctx.target
+        if target.burn_stacks > 0:
+            target.burn_stacks *= 2
+            dmg = int(target.hp * 0.04 * target.burn_stacks)
+            target.current_hp -= max(1, dmg)
+            if target.current_hp <= 0:
+                target.current_hp = 0
+                from src.models import StatusType
+                target.status = StatusType.FAINTED
+
+    elif action == "double_enemy_debuffs":
+        # 落井下毒：敌方所有减益层数翻倍
+        target = ctx.target
+        target.atk_down *= 2
+        target.def_down *= 2
+        target.spatk_down *= 2
+        target.spdef_down *= 2
+        target.speed_down *= 2
+        target.poison_stacks *= 2
+        target.burn_stacks *= 2
+
+    elif action == "grant_random_devotion":
+        # 虫群智慧：随机获得N次奉献
+        count = tag.params.get("count", 2)
+        from src.engine._monolith import DEVOTION_TYPES
+        team = ctx.team
+        devotion = ctx.state._get_devotion(team)
+        for _ in range(count):
+            chosen = random.choice(DEVOTION_TYPES)
+            devotion[chosen] = devotion.get(chosen, 0) + 1
+
+    elif action == "cast_all_normal_skills_double_cost":
+        # 荟萃：释放所有普通系技能（能耗翻倍）— 标记，由battle.py执行
+        pokemon.ability_state["cast_all_normal_double_cost"] = True
+
+    elif action == "anti_heal":
+        # 伪造账单：标记本回合敌方回复变为失去
+        multiplier = tag.params.get("multiplier", 2)
+        ctx.target.ability_state["anti_heal_multiplier"] = multiplier
 
 
 def _h_ability_increment_counter(tag: EffectTag, ctx: Ctx) -> None:
@@ -2340,6 +2524,173 @@ def _h_kill_mp_penalty(tag: EffectTag, ctx: Ctx) -> None:
             ctx.state.mp_b = max(0, ctx.state.mp_b - 1)
 
 
+# ── 第七批特性 handlers ──
+
+def _h_turn_end_repeat(tag: EffectTag, ctx: Ctx) -> None:
+    """TURN_END_REPEAT: 双向光速 — 回合结束效果触发次数+1"""
+    delta = tag.params.get("delta", 1)
+    ctx.user.ability_state["turn_end_repeat"] = ctx.user.ability_state.get("turn_end_repeat", 0) + delta
+
+
+def _h_turn_end_skip(tag: EffectTag, ctx: Ctx) -> None:
+    """TURN_END_SKIP: 陨落 — 回合结束效果触发次数-1"""
+    delta = tag.params.get("delta", 1)
+    ctx.user.ability_state["turn_end_skip"] = ctx.user.ability_state.get("turn_end_skip", 0) + delta
+
+
+def _h_cost_change_double(tag: EffectTag, ctx: Ctx) -> None:
+    """COST_CHANGE_DOUBLE: 倾轧 — 能耗变化效果翻倍（被动标记）"""
+    ctx.user.ability_state["cost_change_double"] = True
+
+
+def _h_noise_debuff(tag: EffectTag, ctx: Ctx) -> None:
+    """NOISE_DEBUFF: 泛音列 — 使用状态技能后敌方攻击技能能耗+3持续3回合"""
+    from src.models import SkillCategory
+    cost_up = tag.params.get("cost_up", 3)
+    turns = tag.params.get("turns", 3)
+    # 给敌方所有攻击技能临时能耗+cost_up
+    for s in ctx.target.skills:
+        if s.category in (SkillCategory.PHYSICAL, SkillCategory.MAGICAL):
+            s.energy_cost += cost_up
+    # 记录临时修改以便回合结束倒计时清除
+    mods = ctx.target.ability_state.setdefault("temporary_skill_cost_mods", [])
+    mods.append({"type": "noise_debuff", "cost_up": cost_up, "turns": turns})
+
+
+def _h_skill_slot_lock(tag: EffectTag, ctx: Ctx) -> None:
+    """SKILL_SLOT_LOCK: 正位宝剑/宝剑王牌 — 限制可用技能位置"""
+    allowed = tag.params.get("allowed_slots", [0])
+    ctx.user.ability_state["skill_slot_lock"] = allowed
+
+
+def _h_buff_extra_layers(tag: EffectTag, ctx: Ctx) -> None:
+    """BUFF_EXTRA_LAYERS: 营养液泡 — 获得增益时额外+N层"""
+    extra = tag.params.get("extra", 2)
+    ctx.user.ability_state["buff_extra_layers"] = extra
+
+
+def _h_barrel_state(tag: EffectTag, ctx: Ctx) -> None:
+    """BARREL_STATE: 木桶戏法 — 离场后替换精灵以木桶状态登场
+
+    木桶状态：属性克制和抵抗全部失效（所有克制=1.0），直到精灵主动行动。
+    """
+    # 标记己方下一个入场的精灵获得木桶状态
+    team = ctx.team
+    if team == "a":
+        ctx.state._barrel_pending_a = True
+    else:
+        ctx.state._barrel_pending_b = True
+
+
+# ── 迸发子系统 handlers ──
+
+def _h_burst_power_bonus(tag: EffectTag, ctx: Ctx) -> None:
+    """BURST_POWER_BONUS: 电流刺激 — 迸发技能威力+N"""
+    bonus = tag.params.get("bonus", 40)
+    ctx.user.ability_state["burst_power_bonus"] = ctx.user.ability_state.get("burst_power_bonus", 0) + bonus
+
+
+def _h_burst_enemy_cost_up(tag: EffectTag, ctx: Ctx) -> None:
+    """BURST_ENEMY_COST_UP: 超负荷 — 迸发技能让敌方全能耗+1"""
+    amount = tag.params.get("amount", 1)
+    ctx.user.ability_state["burst_enemy_cost_up"] = ctx.user.ability_state.get("burst_enemy_cost_up", 0) + amount
+
+
+def _h_burst_element_cost_reduce(tag: EffectTag, ctx: Ctx) -> None:
+    """BURST_ELEMENT_COST_REDUCE: 生物电 — 指定系迸发能耗-N"""
+    ctx.user.ability_state["burst_element_cost_reduce"] = {
+        "element": tag.params.get("element", "电"),
+        "reduce": tag.params.get("reduce", 2),
+    }
+
+
+def _h_burst_extend(tag: EffectTag, ctx: Ctx) -> None:
+    """BURST_EXTEND: 连续负荷 — 迸发效果延长1回合"""
+    extend = tag.params.get("extend", 1)
+    ctx.user.ability_state["burst_extend"] = ctx.user.ability_state.get("burst_extend", 0) + extend
+
+
+# ── 奉献子系统 handlers ──
+
+DEVOTION_TYPES = ["假寐", "飞断", "虫茧", "捆缚", "虫群过境"]
+
+def _h_devotion_grant_random(tag: EffectTag, ctx: Ctx) -> None:
+    """DEVOTION_GRANT_RANDOM: 花精灵 — 回合结束随机获得1种奉献1层"""
+    team = ctx.team
+    devotion = ctx.state._get_devotion(team)
+    chosen = random.choice(DEVOTION_TYPES)
+    devotion[chosen] = devotion.get(chosen, 0) + 1
+
+
+def _h_devotion_on_hit(tag: EffectTag, ctx: Ctx) -> None:
+    """DEVOTION_ON_HIT: 坚韧铠甲 — 受攻击时随机获得1种奉献1层"""
+    team = ctx.team
+    devotion = ctx.state._get_devotion(team)
+    chosen = random.choice(DEVOTION_TYPES)
+    devotion[chosen] = devotion.get(chosen, 0) + 1
+
+
+# ── 传动重构 handlers ──
+
+def _h_drive_position_shift(tag: EffectTag, ctx: Ctx) -> None:
+    """DRIVE_POSITION_SHIFT: 翼轴 — 指定位置技能获得迅捷+传动"""
+    slot = tag.params.get("slot", 0)
+    agility = tag.params.get("agility", True)
+    drive_val = tag.params.get("drive", 1)
+    skills = ctx.user.skills
+    if slot < len(skills):
+        if agility:
+            skills[slot].agility = True
+        # 传动值存在 ability_state 中，battle.py 的传动循环会使用
+        existing_drives = ctx.user.ability_state.setdefault("extra_drives", {})
+        existing_drives[slot] = existing_drives.get(slot, 0) + drive_val
+
+
+def _h_drive_on_position_change(tag: EffectTag, ctx: Ctx) -> None:
+    """DRIVE_ON_POSITION_CHANGE: 机械变式 — 技能位置变化时能耗-1"""
+    ctx.user.ability_state["drive_on_position_change_reduce"] = tag.params.get("reduce", 1)
+
+
+# ── 蓄力相关 handlers ──
+
+def _h_charge_cost_reduce(tag: EffectTag, ctx: Ctx) -> None:
+    """CHARGE_COST_REDUCE: 洄游 — 每次蓄力全技能能耗永久-1（标记，由battle.py蓄力流程读取）"""
+    ctx.user.ability_state["charge_cost_reduce"] = tag.params.get("reduce", 1)
+
+
+def _h_charge_free_skill(tag: EffectTag, ctx: Ctx) -> None:
+    """CHARGE_FREE_SKILL: 嫉妒 — 蓄力状态下可用任一技能（标记）"""
+    ctx.user.ability_state["charge_free_skill"] = True
+
+
+# ── 其他特殊 handlers ──
+
+def _h_share_gains(tag: EffectTag, ctx: Ctx) -> None:
+    """SHARE_GAINS: 系统发育 — 获得能量/生命时分配给场下精灵（标记）"""
+    ctx.user.ability_state["share_gains"] = True
+
+
+def _h_contract_entry(tag: EffectTag, ctx: Ctx) -> None:
+    """CONTRACT_ENTRY: 契约的形状 — 默认绝缘球：入场+50速度，给敌方1层中毒"""
+    ball = tag.params.get("ball", "绝缘球")
+    if ball == "绝缘球":
+        ctx.user.speed_up += 0.0  # 速度用 flat +50
+        # 直接+50速度（作为 skill_power_bonus 的speed等价物）
+        # 用 speed_up 百分比近似：+50/base_speed
+        base_spd = max(1, ctx.user.speed)
+        ctx.user.speed_up += 50.0 / base_spd
+        ctx.target.poison_stacks += 1
+
+
+def _h_bloodline_entry(tag: EffectTag, ctx: Ctx) -> None:
+    """BLOODLINE_ENTRY: 稀兽花宝 — 根据系别入场效果，默认萌系：降低敌方60%双攻"""
+    element = tag.params.get("element", "萌")
+    if element == "萌":
+        # 降低敌方60%双攻（各6层×10%）
+        ctx.target.atk_down += 0.6
+        ctx.target.spatk_down += 0.6
+
+
 _HANDLERS: Dict[E, Callable] = {
     E.DAMAGE:                   _h_damage,
     E.SELF_BUFF:                _h_self_buff,
@@ -2371,6 +2722,7 @@ _HANDLERS: Dict[E, Callable] = {
     E.SPIRIT_MARK:              _h_spirit_mark,
     E.METEOR_MARK:              _h_meteor_mark,
     E.THORN_MARK:               _h_thorn_mark,
+    E.MOMENTUM_MARK:            _h_momentum_mark,
     E.DISPEL_ENEMY_MARKS:       _h_dispel_enemy_marks,
     E.CONVERT_MARKS_TO_BURN:    _h_convert_marks_to_burn,
     E.DISPEL_MARKS_TO_BURN:     _h_dispel_marks_to_burn,
@@ -2506,6 +2858,27 @@ _HANDLERS: Dict[E, Callable] = {
     E.KILL_MP_PENALTY:               _h_kill_mp_penalty,
     E.ENERGY_DRAIN_BY_COST_DIFF:     _h_energy_drain_by_cost_diff,
     E.ENTRY_BUFF_PER_SKILL_COUNT:    _h_entry_buff_per_skill_count,
+    # ── 第七批特性原语 ──
+    E.TURN_END_REPEAT:               _h_turn_end_repeat,
+    E.TURN_END_SKIP:                 _h_turn_end_skip,
+    E.COST_CHANGE_DOUBLE:            _h_cost_change_double,
+    E.NOISE_DEBUFF:                  _h_noise_debuff,
+    E.SKILL_SLOT_LOCK:               _h_skill_slot_lock,
+    E.BUFF_EXTRA_LAYERS:             _h_buff_extra_layers,
+    E.BARREL_STATE:                  _h_barrel_state,
+    E.BURST_POWER_BONUS:             _h_burst_power_bonus,
+    E.BURST_ENEMY_COST_UP:           _h_burst_enemy_cost_up,
+    E.BURST_ELEMENT_COST_REDUCE:     _h_burst_element_cost_reduce,
+    E.BURST_EXTEND:                  _h_burst_extend,
+    E.DEVOTION_GRANT_RANDOM:         _h_devotion_grant_random,
+    E.DEVOTION_ON_HIT:               _h_devotion_on_hit,
+    E.DRIVE_POSITION_SHIFT:          _h_drive_position_shift,
+    E.DRIVE_ON_POSITION_CHANGE:      _h_drive_on_position_change,
+    E.CHARGE_COST_REDUCE:            _h_charge_cost_reduce,
+    E.CHARGE_FREE_SKILL:             _h_charge_free_skill,
+    E.SHARE_GAINS:                   _h_share_gains,
+    E.CONTRACT_ENTRY:                _h_contract_entry,
+    E.BLOODLINE_ENTRY:               _h_bloodline_entry,
 }
 
 # 特性中部分 handler 与技能略有不同，按 tag type 覆盖
@@ -2612,6 +2985,27 @@ _ABILITY_HANDLER_OVERRIDES: Dict[E, Callable] = {
     E.KILL_MP_PENALTY:               _h_kill_mp_penalty,
     E.ENERGY_DRAIN_BY_COST_DIFF:     _h_energy_drain_by_cost_diff,
     E.ENTRY_BUFF_PER_SKILL_COUNT:    _h_entry_buff_per_skill_count,
+    # ── 第七批特性原语 ──
+    E.TURN_END_REPEAT:               _h_turn_end_repeat,
+    E.TURN_END_SKIP:                 _h_turn_end_skip,
+    E.COST_CHANGE_DOUBLE:            _h_cost_change_double,
+    E.NOISE_DEBUFF:                  _h_noise_debuff,
+    E.SKILL_SLOT_LOCK:               _h_skill_slot_lock,
+    E.BUFF_EXTRA_LAYERS:             _h_buff_extra_layers,
+    E.BARREL_STATE:                  _h_barrel_state,
+    E.BURST_POWER_BONUS:             _h_burst_power_bonus,
+    E.BURST_ENEMY_COST_UP:           _h_burst_enemy_cost_up,
+    E.BURST_ELEMENT_COST_REDUCE:     _h_burst_element_cost_reduce,
+    E.BURST_EXTEND:                  _h_burst_extend,
+    E.DEVOTION_GRANT_RANDOM:         _h_devotion_grant_random,
+    E.DEVOTION_ON_HIT:               _h_devotion_on_hit,
+    E.DRIVE_POSITION_SHIFT:          _h_drive_position_shift,
+    E.DRIVE_ON_POSITION_CHANGE:      _h_drive_on_position_change,
+    E.CHARGE_COST_REDUCE:            _h_charge_cost_reduce,
+    E.CHARGE_FREE_SKILL:             _h_charge_free_skill,
+    E.SHARE_GAINS:                   _h_share_gains,
+    E.CONTRACT_ENTRY:                _h_contract_entry,
+    E.BLOODLINE_ENTRY:               _h_bloodline_entry,
 }
 
 

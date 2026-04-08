@@ -38,18 +38,21 @@ class E(Enum):
     METEOR = auto()                  # 星陨  params: {"stacks": 1}
 
     # ── 印记系统 (全队共享, 换人不消失) ──
-    POISON_MARK = auto()             # 中毒印记  params: {"stacks": 1}
-    MOISTURE_MARK = auto()           # 湿润印记  params: {"stacks": 1}
-    DRAGON_MARK = auto()             # 龙噬印记  params: {"stacks": 1}  释放基础能耗==5技能时攻击+40%
-    WIND_MARK = auto()               # 风起印记  params: {"stacks": 1}  先手攻击时威力+20%
-    CHARGE_MARK = auto()             # 蓄电印记  params: {"stacks": 1}  入场首回合技能威力+10
-    SOLAR_MARK = auto()              # 光合印记  params: {"stacks": 1}  回合结束能量+1
-    ATTACK_MARK = auto()             # 攻击印记  params: {"stacks": 1}  威力提升10%
-    SLOW_MARK = auto()               # 减速印记  params: {"stacks": 1}  降低速度10%
-    SLUGGISH_MARK = auto()           # 迟缓印记  params: {"stacks": 1}  后手攻击时威力+30%
-    SPIRIT_MARK = auto()             # 降灵印记  params: {"stacks": 1}  换上场失去1能量
-    METEOR_MARK = auto()             # 星陨印记  params: {"stacks": 1}  造成伤害时消耗,每层30威力魔伤
-    THORN_MARK = auto()              # 荆刺印记  params: {"stacks": 1}  敌方入场失去6%HP
+    # 正面印记：同一阵营同时仅存1种，新覆盖旧
+    # 负面印记：可多种共存
+    POISON_MARK = auto()             # 中毒印记(负面)  params: {"stacks": 1}
+    MOISTURE_MARK = auto()           # 湿润印记(正面)  params: {"stacks": 1}
+    DRAGON_MARK = auto()             # 龙噬印记(正面)  params: {"stacks": 1}  释放基础能耗==5技能时攻击+40%
+    WIND_MARK = auto()               # 风起印记(正面)  params: {"stacks": 1}  先手攻击时威力+20%
+    CHARGE_MARK = auto()             # 蓄电印记(正面)  params: {"stacks": 1}  入场首回合技能威力+10
+    SOLAR_MARK = auto()              # 光合印记(正面)  params: {"stacks": 1}  回合结束能量+1
+    ATTACK_MARK = auto()             # 攻击印记(正面)  params: {"stacks": 1}  威力提升10%
+    SLOW_MARK = auto()               # 减速印记(负面)  params: {"stacks": 1}  降低速度10%
+    SLUGGISH_MARK = auto()           # 迟缓印记(正面)  params: {"stacks": 1}  后手攻击时威力+30%
+    SPIRIT_MARK = auto()             # 降灵印记(负面)  params: {"stacks": 1}  换上场失去1能量
+    METEOR_MARK = auto()             # 星陨印记(负面)  params: {"stacks": 1}  造成伤害时消耗,每层30威力魔伤
+    THORN_MARK = auto()              # 荆刺印记(负面)  params: {"stacks": 1}  敌方入场失去6%HP
+    MOMENTUM_MARK = auto()           # 蓄势印记(正面)  params: {"stacks": 1}  攻击技能威力+30%且能耗+1，可叠加
 
     # ── 印记特殊操作 ──
     DISPEL_ENEMY_MARKS = auto()      # 驱散敌方印记  params: {}
@@ -241,6 +244,38 @@ class E(Enum):
                                           # params: {"count_key":"水"|"状态"|..., "per_count":{...效果描述}}
                                           # per_count 支持: cost_reduce(int), power_pct(float), buff(dict), grant_agility(bool)
                                           # element_filter: 只对某系技能生效
+
+    # ── 第七批特性原语 ──
+    TURN_END_REPEAT = auto()             # 双向光速: 回合结束效果触发次数+1  params: {"delta": 1}
+    TURN_END_SKIP = auto()               # 陨落: 回合结束效果触发次数-1  params: {"delta": 1}
+    COST_CHANGE_DOUBLE = auto()          # 倾轧: 能耗变化效果翻倍  params: {}
+    NOISE_DEBUFF = auto()                # 泛音列: 使用状态技能后敌方攻击技能能耗+3持续3回合  params: {"cost_up": 3, "turns": 3}
+    SKILL_SLOT_LOCK = auto()             # 正位宝剑/宝剑王牌: 限制可用技能位置  params: {"allowed_slots": [0]} 或 [0,2]
+    BUFF_EXTRA_LAYERS = auto()           # 营养液泡: 获得增益时额外+N层  params: {"extra": 2}
+    BARREL_STATE = auto()                # 木桶戏法: 离场后替换精灵以木桶状态登场  params: {}
+
+    # ── 迸发子系统 ──
+    BURST_POWER_BONUS = auto()           # 电流刺激: 迸发技能威力+N  params: {"bonus": 40}
+    BURST_ENEMY_COST_UP = auto()         # 超负荷: 迸发技能让敌方全能耗+1  params: {"amount": 1}
+    BURST_ELEMENT_COST_REDUCE = auto()   # 生物电: 指定系迸发能耗-N  params: {"element": "电", "reduce": 2}
+    BURST_EXTEND = auto()                # 连续负荷: 迸发效果延长1回合  params: {"extend": 1}
+
+    # ── 奉献子系统 ──
+    DEVOTION_GRANT_RANDOM = auto()       # 花精灵: 回合结束随机获得1种奉献1层  params: {}
+    DEVOTION_ON_HIT = auto()             # 坚韧铠甲: 受攻击时随机获得1种奉献1层  params: {}
+
+    # ── 传动重构 ──
+    DRIVE_POSITION_SHIFT = auto()        # 翼轴: 1号位技能获得迅捷+传动1  params: {"slot": 0, "agility": True, "drive": 1}
+    DRIVE_ON_POSITION_CHANGE = auto()    # 机械变式: 技能位置变化时能耗-1  params: {"reduce": 1}
+
+    # ── 蓄力相关 ──
+    CHARGE_COST_REDUCE = auto()          # 洄游: 每次蓄力全技能能耗永久-1  params: {"reduce": 1}
+    CHARGE_FREE_SKILL = auto()           # 嫉妒: 蓄力状态下可用任一技能  params: {}
+
+    # ── 其他特殊 ──
+    SHARE_GAINS = auto()                 # 系统发育: 获得能量/生命时分配给场下精灵  params: {}
+    CONTRACT_ENTRY = auto()              # 契约的形状: 入场时根据咕噜球类型触发效果  params: {"ball": "绝缘球"}
+    BLOODLINE_ENTRY = auto()             # 稀兽花宝: 入场时根据系别触发效果  params: {"element": "萌"}
 
 
 # ============================================================

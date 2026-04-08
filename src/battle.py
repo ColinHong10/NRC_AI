@@ -248,6 +248,12 @@ class DamageCalculator:
         # 属性克制
         eff = get_type_effectiveness(skill.skill_type, defender.pokemon_type)
 
+        # 木桶状态：攻击方或防御方有木桶时，克制和抵抗全部失效
+        if getattr(attacker, "ability_state", {}).get("barrel_active"):
+            eff = 1.0
+        if getattr(defender, "ability_state", {}).get("barrel_active"):
+            eff = 1.0
+
         # 本系加成 1.5x
         stab = 1.5 if skill.skill_type == attacker.pokemon_type else 1.0
 
@@ -434,59 +440,69 @@ def turn_end_effects(state: BattleState) -> None:
         if p.is_fainted:
             continue
 
-        # 中毒: 3% × 层数 (不衰减)
-        if p.poison_stacks > 0:
-            dmg = int(p.hp * 0.03 * p.poison_stacks)
-            p.current_hp -= max(1, dmg)
+        # 双向光速/陨落：回合结束效果触发次数调整
+        repeat = 1 + p.ability_state.get("turn_end_repeat", 0)
+        skip = p.ability_state.get("turn_end_skip", 0)
+        effective_ticks = max(0, repeat - skip)
 
-        # 燃烧: 4% × 层数, 然后层数减半(最少减1层)
-        # 燃薪虫煤渣草: 灼烧不衰减反而增长
-        if p.burn_stacks > 0:
-            dmg = int(p.hp * 0.04 * p.burn_stacks)
-            p.current_hp -= max(1, dmg)
-            # 判断对手是否有煤渣草特性 (对手的在场精灵)
-            enemy_team_id = "b" if team_id == "a" else "a"
-            if enemy_team_id in burn_no_decay:
-                # 灼烧增长 (增加与衰减等量)
-                growth = max(1, p.burn_stacks // 2)
-                p.burn_stacks += growth
-            else:
-                decay = max(1, p.burn_stacks // 2)
-                p.burn_stacks = max(0, p.burn_stacks - decay)
+        for _tick in range(effective_ticks):
+            # 中毒: 3% × 层数 (不衰减)
+            if p.poison_stacks > 0:
+                dmg = int(p.hp * 0.03 * p.poison_stacks)
+                p.current_hp -= max(1, dmg)
 
-        # 冻伤: 每回合累加 hp//12 不可恢复伤害
-        if p.frostbite_damage > 0 or p.freeze_stacks > 0:
-            frost_tick = p.hp // 12
-            p.frostbite_damage += frost_tick
-            if p.current_hp <= p.frostbite_damage:
-                p.current_hp = 0
-            else:
-                effective_max = p.effective_max_hp
-                if p.current_hp > effective_max:
-                    p.current_hp = effective_max
-
-        # 寄生: 每层8%最大HP, 吸取给对手
-        if p.leech_stacks > 0:
-            leech_dmg = int(p.hp * 0.08 * p.leech_stacks)
-            p.current_hp -= max(1, leech_dmg)
-            enemy = enemy_team_list[enemy_idx]
-            if not enemy.is_fainted:
-                enemy.current_hp = min(enemy.hp, enemy.current_hp + leech_dmg)
-
-        # 星陨: 倒计时-1, 到0时引爆
-        if p.meteor_countdown > 0:
-            p.meteor_countdown -= 1
-            if p.meteor_countdown <= 0 and p.meteor_stacks > 0:
-                enemy = enemy_team_list[enemy_idx]
-                meteor_power = 30 * p.meteor_stacks
-                if not enemy.is_fainted:
-                    e_spatk = enemy.effective_spatk()
-                    p_spdef = max(1.0, p.effective_spdef())
-                    meteor_dmg = max(1, int((e_spatk / p_spdef) * meteor_power * 0.9))
+            # 燃烧: 4% × 层数, 然后层数减半(最少减1层)
+            # 燃薪虫煤渣草: 灼烧不衰减反而增长
+            if p.burn_stacks > 0:
+                dmg = int(p.hp * 0.04 * p.burn_stacks)
+                p.current_hp -= max(1, dmg)
+                # 判断对手是否有煤渣草特性 (对手的在场精灵)
+                enemy_team_id = "b" if team_id == "a" else "a"
+                if enemy_team_id in burn_no_decay:
+                    # 灼烧增长 (增加与衰减等量)
+                    growth = max(1, p.burn_stacks // 2)
+                    p.burn_stacks += growth
                 else:
-                    meteor_dmg = max(1, meteor_power)
-                p.current_hp -= meteor_dmg
-                p.meteor_stacks = 0
+                    decay = max(1, p.burn_stacks // 2)
+                    p.burn_stacks = max(0, p.burn_stacks - decay)
+
+            # 冻伤: 每回合累加 hp//12 不可恢复伤害
+            if p.frostbite_damage > 0 or p.freeze_stacks > 0:
+                frost_tick = p.hp // 12
+                p.frostbite_damage += frost_tick
+                if p.current_hp <= p.frostbite_damage:
+                    p.current_hp = 0
+                else:
+                    effective_max = p.effective_max_hp
+                    if p.current_hp > effective_max:
+                        p.current_hp = effective_max
+
+            # 寄生: 每层8%最大HP, 吸取给对手
+            if p.leech_stacks > 0:
+                leech_dmg = int(p.hp * 0.08 * p.leech_stacks)
+                p.current_hp -= max(1, leech_dmg)
+                enemy = enemy_team_list[enemy_idx]
+                if not enemy.is_fainted:
+                    enemy.current_hp = min(enemy.hp, enemy.current_hp + leech_dmg)
+
+            # 星陨: 倒计时-1, 到0时引爆
+            if p.meteor_countdown > 0:
+                p.meteor_countdown -= 1
+                if p.meteor_countdown <= 0 and p.meteor_stacks > 0:
+                    enemy = enemy_team_list[enemy_idx]
+                    meteor_power = 30 * p.meteor_stacks
+                    if not enemy.is_fainted:
+                        e_spatk = enemy.effective_spatk()
+                        p_spdef = max(1.0, p.effective_spdef())
+                        meteor_dmg = max(1, int((e_spatk / p_spdef) * meteor_power * 0.9))
+                    else:
+                        meteor_dmg = max(1, meteor_power)
+                    p.current_hp -= meteor_dmg
+                    p.meteor_stacks = 0
+
+            # 如果已倒下，跳出多重触发循环
+            if p.current_hp <= 0:
+                break
 
         # 判定倒下
         if p.current_hp <= 0:
@@ -679,6 +695,12 @@ def get_mark_damage_modifiers(state: BattleState, team: str, is_first: bool,
     if sluggish > 0 and not is_first:
         mods["power_mult"] += 0.3 * sluggish
 
+    # 蓄势印记：攻击技能威力+30%×层数（能耗+1在技能执行时处理）
+    momentum = my_marks.get("momentum_mark", 0)
+    if momentum > 0:
+        if skill.category in (SkillCategory.PHYSICAL, SkillCategory.MAGICAL):
+            mods["power_mult"] += 0.3 * momentum
+
     # 星陨印记：造成伤害时消耗所有层数（稍后额外结算魔伤）
     meteor = enemy_marks.get("meteor_mark", 0)
     if meteor > 0:
@@ -864,6 +886,19 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
                 new_pokemon.ability_effects, team,
             )
 
+        # 迸发系统：记录入场回合号
+        burst_map = state.burst_entry_turn_a if team == "a" else state.burst_entry_turn_b
+        burst_map[new_pokemon.name] = state.turn
+
+        # 木桶状态：如果有木桶待生效标记，给新入场精灵设置木桶
+        barrel_pending = state._barrel_pending_a if team == "a" else state._barrel_pending_b
+        if barrel_pending:
+            new_pokemon.ability_state["barrel_active"] = True
+            if team == "a":
+                state._barrel_pending_a = False
+            else:
+                state._barrel_pending_b = False
+
         # 迅捷：入场时自动释放带 agility 标记的技能
         EffectExecutor.execute_agility_entry(state, new_pokemon, enemy, team)
 
@@ -883,24 +918,47 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
     # 汇合聚能
     if action[0] == -1:
         current.gain_energy(5)
+        # 木桶状态：聚能也算主动行动，清除木桶
+        current.ability_state.pop("barrel_active", None)
         return
 
     skill = current.skills[action[0]]
 
-    # 蓄力逻辑
+    # ── 技能槽锁定检查（正位宝剑/宝剑王牌）──
+    slot_lock = current.ability_state.get("skill_slot_lock")
+    if slot_lock is not None and action[0] not in slot_lock:
+        # 该位置技能被锁定，自动转为聚能
+        current.gain_energy(5)
+        return
+
+    # ── 蓄力逻辑（增强版）──
     if skill.charge:
         if current.charging_skill_idx != action[0]:
             current.charging_skill_idx = action[0]
+            # 洄游特性：进入蓄力时全技能能耗永久-1
+            charge_reduce = current.ability_state.get("charge_cost_reduce", 0)
+            if charge_reduce > 0:
+                for s in current.skills:
+                    s.energy_cost = max(0, s.energy_cost - charge_reduce)
             return
         else:
             current.charging_skill_idx = -1
 
+    # ── 木桶状态：使用技能算主动行动，先清除木桶 ──
+    current.ability_state.pop("barrel_active", None)
+
     # 计算实际能耗（含动态减免，如毒液渗透）
+    my_marks = state.marks_a if team == "a" else state.marks_b
+    momentum_cost = 0
+    momentum_stacks = my_marks.get("momentum_mark", 0)
+    if momentum_stacks > 0 and skill.category in (SkillCategory.PHYSICAL, SkillCategory.MAGICAL):
+        momentum_cost = momentum_stacks  # 每层+1能耗
     actual_cost = max(
         0,
         skill.energy_cost
         + getattr(current, "skill_cost_mod", 0)
-        + _temporary_skill_cost_delta(current, skill),
+        + _temporary_skill_cost_delta(current, skill)
+        + momentum_cost,
     )
     for tag in _iter_flat_tags(getattr(skill, "effects", [])):
         if tag.type == E.ENERGY_COST_DYNAMIC:
@@ -942,9 +1000,72 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
     # 记录实际能耗到技能上，供逐魂鸟等效果检查
     skill._last_actual_cost = actual_cost
 
+    # ── 迸发系统：入场第一回合使用带迸发标记的技能 ──
+    burst_map = state.burst_entry_turn_a if team == "a" else state.burst_entry_turn_b
+    entry_turn = burst_map.get(current.name, -1)
+    is_burst = (state.turn == entry_turn) and getattr(skill, "burst", False)
+    burst_extend = current.ability_state.get("burst_extend", 0)
+    if not is_burst and burst_extend > 0 and getattr(skill, "burst", False):
+        # 连续负荷：迸发效果延长 N 回合
+        if state.turn <= entry_turn + burst_extend:
+            is_burst = True
+    if is_burst:
+        # 迸发威力加成（电流刺激）
+        burst_bonus = current.ability_state.get("burst_power_bonus", 0)
+        if burst_bonus > 0:
+            skill.power += burst_bonus
+            current.ability_state["_burst_power_applied"] = burst_bonus
+        # 迸发敌方能耗+N（超负荷）
+        burst_cost_up = current.ability_state.get("burst_enemy_cost_up", 0)
+        if burst_cost_up > 0:
+            for s in enemy.skills:
+                s.energy_cost += burst_cost_up
+        # 迸发元素能耗减免（生物电）
+        burst_elem = current.ability_state.get("burst_element_cost_reduce")
+        if burst_elem:
+            elem_name = burst_elem["element"]
+            elem_reduce = burst_elem["reduce"]
+            TYPE_CHINESE_MAP = {"电": "electric", "火": "fire", "水": "water", "冰": "ice",
+                                "草": "grass", "地": "ground", "龙": "dragon", "翼": "flying",
+                                "虫": "bug", "武": "fighting", "毒": "poison", "幽": "ghost",
+                                "幻": "psychic", "恶": "dark", "机械": "steel", "萌": "fairy",
+                                "光": "light", "普通": "normal"}
+            if skill.skill_type.value == TYPE_CHINESE_MAP.get(elem_name, ""):
+                actual_cost = max(0, actual_cost - elem_reduce)
+                current.energy += min(elem_reduce, skill._last_actual_cost)  # 退还多扣的能量
+
+    # ── 奉献系统：使用带奉献标记的技能时应用累积buff ──
+    devotion = state.devotion_a if team == "a" else state.devotion_b
+    if devotion and getattr(skill, "devotion_affected", False):
+        # 假寐(能耗-2): 已在上面扣能量后，这里不能退，但可以给下次用
+        dev_cost_reduce = devotion.get("假寐", 0) * 2
+        if dev_cost_reduce > 0:
+            current.skill_cost_mod -= dev_cost_reduce
+        # 飞断(威力+20)
+        dev_power = devotion.get("飞断", 0) * 20
+        if dev_power > 0:
+            current.skill_power_bonus += dev_power
+        # 虫茧(吸血+10%)
+        dev_drain = devotion.get("虫茧", 0) * 0.1
+        if dev_drain > 0:
+            current.life_drain_mod += dev_drain
+        # 捆缚(中毒2层)
+        dev_poison = devotion.get("捆缚", 0) * 2
+        if dev_poison > 0:
+            enemy.poison_stacks += dev_poison
+        # 虫群过境(连击+1)
+        dev_hits = devotion.get("虫群过境", 0)
+        if dev_hits > 0:
+            current.hit_count_mod += dev_hits
+
     # 所有技能走新引擎（效果由 EffectTag 驱动）
     _execute_new_engine(state, team, enemy_team, current, enemy, skill,
                         action, enemy_action, team_list, idx, is_first)
+
+    # ── 迸发后清理：恢复临时威力修改 ──
+    burst_applied = current.ability_state.pop("_burst_power_applied", 0)
+    if burst_applied > 0:
+        skill.power -= burst_applied
 
 
 def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
@@ -1093,6 +1214,22 @@ def _resolve_enemy_counters(state, current, enemy, skill, enemy_skill,
             enemy.ability_state["last_counter_success_turn"] = state.turn
             _handle_counter_success_ability(state, enemy, enemy_skill, defer_transform=True)
             _trigger_ally_counter_effects(state, enemy_team, current)
+
+        # 应对方自己脱离（泡沫幻影等：应对攻击后自己脱离）
+        if counter_result and counter_result.get("force_switch"):
+            enemy_list_ref = state.team_a if enemy_team == "a" else state.team_b
+            enemy_idx = state.current_a if enemy_team == "a" else state.current_b
+            alive = [i for i, p in enumerate(enemy_list_ref)
+                     if not p.is_fainted and i != enemy_idx]
+            if alive:
+                enemy.on_switch_out()
+                new_idx = random.choice(alive)
+                if enemy_team == "a":
+                    state.current_a = new_idx
+                else:
+                    state.current_b = new_idx
+
+        # 应对方强制敌方脱离（吓退等：应对攻击后敌方脱离）
         if counter_result and counter_result.get("force_enemy_switch"):
             alive = [i for i, p in enumerate(team_list)
                      if not p.is_fainted and i != idx]

@@ -396,8 +396,383 @@ SKILL_EFFECTS = {
         SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
     ],
 
-    # 蓄势待发: 自己获得1层蓄势印记 (效果待确认，暂只添加印记)
-    # "蓄势待发": [],
+    # 蓄势待发: 自己获得1层蓄势印记（攻击技能威力+30%且能耗+1，可叠加）
+    "蓄势待发": [
+        SE(SkillTiming.ON_USE, [T(E.MOMENTUM_MARK, stacks=1, target="self")]),
+    ],
+
+    # ============================================================
+    #  P1 修复: 应对效果缺失 + 脱离缺失
+    # ============================================================
+
+    # 不动如山: 减伤90%，应对攻击
+    "不动如山": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE_REDUCTION, pct=0.9)]),
+        SE(SkillTiming.ON_COUNTER, [], category="attack"),
+    ],
+
+    # 不可接触: 减伤50%+中毒层减伤，应对攻击
+    "不可接触": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE_REDUCTION, pct=0.5)]),
+        SE(SkillTiming.ON_COUNTER, [], category="attack"),
+    ],
+
+    # 硬化: 减伤90%，若上次使用攻击技则能耗-2，应对攻击
+    "硬化": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE_REDUCTION, pct=0.9)]),
+        SE(SkillTiming.ON_COUNTER, [], category="attack"),
+    ],
+
+    # 虚假破产: 减伤80%，应对攻击
+    "虚假破产": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE_REDUCTION, pct=0.8)]),
+        SE(SkillTiming.ON_COUNTER, [], category="attack"),
+    ],
+
+    # 遁地: 减伤50%+脱离，应对攻击
+    "遁地": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE_REDUCTION, pct=0.5), T(E.FORCE_SWITCH)]),
+        SE(SkillTiming.ON_COUNTER, [], category="attack"),
+    ],
+
+    # 无畏之心: 减伤100%，应对攻击：回复生命+能耗永久+2
+    "无畏之心": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE_REDUCTION, pct=1.0)]),
+        SE(SkillTiming.ON_COUNTER, [T(E.HEAL_HP, pct=0.3)], category="attack"),
+        SE(SkillTiming.POST_USE, [T(E.PERMANENT_MOD, target="cost", delta=2)]),
+    ],
+
+    # 气势一击: 造成物伤，若上回合应对成功，威力+240
+    "气势一击": [
+        SE(SkillTiming.IF, [T(E.POWER_DYNAMIC, condition="prev_counter_success", bonus=240)], prev_counter_success=True),
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+    ],
+
+    # 气沉丹田: 回复60%HP+物攻+130%，每次应对能耗-3，使用后重置
+    "气沉丹田": [
+        SE(SkillTiming.ON_USE, [T(E.HEAL_HP, pct=0.6), T(E.SELF_BUFF, atk=1.3)]),
+        SE(SkillTiming.POST_USE, [T(E.RESET_SKILL_COST)]),
+    ],
+
+    # 叠势: 造成魔伤2连击，每应对1次连击永久+2
+    "叠势": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.PERMANENT_MOD, target="hit_count", delta=2, trigger="per_counter")]),
+    ],
+
+    # 能量守恒: 减伤80%，应对攻击：两侧技能能耗永久-1
+    "能量守恒": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE_REDUCTION, pct=0.8)]),
+        SE(SkillTiming.ON_COUNTER, [T(E.PASSIVE_ENERGY_REDUCE, reduce=1, range="adjacent")], category="attack"),
+    ],
+
+    # 羽刃: 造成物伤，应对状态：敌方脱离
+    "羽刃": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.ON_COUNTER, [T(E.FORCE_ENEMY_SWITCH)], category="status"),
+    ],
+
+    # 放晴: 光系技能威力永久+40%，应对防御：改为+80%
+    "放晴": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="modify_matching_skills", power_pct=0.4, element=["光"])]),
+        SE(SkillTiming.ON_COUNTER, [T(E.ABILITY_COMPUTE, action="modify_matching_skills", power_pct=0.4, element=["光"])], category="defense"),
+    ],
+
+    # 联动装置: 两侧技能威力永久+20，应对防御：+30
+    "联动装置": [
+        SE(SkillTiming.ON_USE, [T(E.PERMANENT_MOD, target="power", delta=20, range="adjacent")]),
+        SE(SkillTiming.ON_COUNTER, [T(E.PERMANENT_MOD, target="power", delta=10, range="adjacent")], category="defense"),
+    ],
+
+    # ============================================================
+    #  P1 修复: 传动缺失（6个机械队技能）
+    # ============================================================
+
+    # 传感器: 造成物伤2连击，1/3号位连击+1，传动1
+    "传感器": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.PRE_USE, [T(E.POSITION_BUFF, positions=[0, 2], buff={"hit_count": 1})]),
+        SE(SkillTiming.POST_USE, [T(E.DRIVE, value=1)]),
+    ],
+
+    # 械斗: 造成物伤，1号位威力+60，传动1
+    "械斗": [
+        SE(SkillTiming.PRE_USE, [T(E.POSITION_BUFF, positions=[0], buff={"power": 60})]),
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.DRIVE, value=1)]),
+    ],
+
+    # 磁暴: 造成魔伤，1/3号位威力+30，传动1
+    "磁暴": [
+        SE(SkillTiming.PRE_USE, [T(E.POSITION_BUFF, positions=[0, 2], buff={"power": 30})]),
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.DRIVE, value=1)]),
+    ],
+
+    # 离子震荡: 造成魔伤，3号位威力+40，传动1
+    "离子震荡": [
+        SE(SkillTiming.PRE_USE, [T(E.POSITION_BUFF, positions=[2], buff={"power": 40})]),
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.DRIVE, value=1)]),
+    ],
+
+    # 钢铁洪流: 造成物伤，1号位威力+90，传动2
+    "钢铁洪流": [
+        SE(SkillTiming.PRE_USE, [T(E.POSITION_BUFF, positions=[0], buff={"power": 90})]),
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.DRIVE, value=2)]),
+    ],
+
+    # 齿轮切开: 造成物伤，1/3号位能耗-2，传动1
+    "齿轮切开": [
+        SE(SkillTiming.PRE_USE, [T(E.POSITION_BUFF, positions=[0, 2], buff={"cost_reduce": 2})]),
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.DRIVE, value=1)]),
+    ],
+
+    # ============================================================
+    #  P2 修复: 永久修改缺失
+    # ============================================================
+
+    # 光能聚集: 造成魔伤，每用其他草系技能后威力永久+60
+    "光能聚集": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.PERMANENT_MOD, target="power", delta=60, trigger="per_ally_grass_skill")]),
+    ],
+
+    # 山火: 造成物伤，每用其他火系技能威力永久翻倍
+    "山火": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.PERMANENT_MOD, target="power", delta=15, trigger="per_ally_fire_skill")]),
+    ],
+
+    # 流星火雨: 造成物伤，每击败敌方威力永久+75
+    "流星火雨": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.PERMANENT_MOD, target="power", delta=75, trigger="per_kill")]),
+    ],
+
+    # 落雷: 造成魔伤，每次入场威力永久+20
+    "落雷": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.PERMANENT_MOD, target="power", delta=20, trigger="per_entry")]),
+    ],
+
+    # 趁火打劫: 造成物伤2连击，击败敌方连击永久+2
+    "趁火打劫": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.ON_HIT, [T(E.PERMANENT_MOD, target="hit_count", delta=2)], on_kill=True),
+    ],
+
+    # 岩土暴击: 造成物伤，每被攻击1次能耗永久-1
+    "岩土暴击": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+    ],
+
+    # 水波术: 造成魔伤，回合结束威力永久+20
+    "水波术": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.PERMANENT_MOD, target="power", delta=20, trigger="per_turn_end")]),
+    ],
+
+    # 蓄能轰击: 造成魔伤，每用其他普通系技能能耗永久-2
+    "蓄能轰击": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.PERMANENT_MOD, target="cost", delta=-2, trigger="per_ally_normal_skill")]),
+    ],
+
+    # 绵里藏针: 造成魔伤，若敌方上回合没受到伤害威力永久+30
+    "绵里藏针": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.PERMANENT_MOD, target="power", delta=30, trigger="per_enemy_no_damage_last_turn")]),
+    ],
+
+    # 过曝: 造成魔伤，每用过1个其他系别技能威力永久+30
+    "过曝": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.PERMANENT_MOD, target="power", delta=30, trigger="per_unique_element")]),
+    ],
+
+    # 阳火增辉: 造成魔伤，每击败敌方威力永久翻倍
+    "阳火增辉": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.ON_HIT, [T(E.PERMANENT_MOD, target="power_double", delta=1)], on_kill=True),
+    ],
+
+    # 感电: 造成魔伤，每离场1次使用次数(连击)永久+1
+    "感电": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+    ],
+
+    # 聚盐: 2连击，每连击回复5%HP+1能量，使用后连击永久+1
+    "聚盐": [
+        SE(SkillTiming.ON_USE, [T(E.HEAL_HP, pct=0.05), T(E.HEAL_ENERGY, amount=1)]),
+        SE(SkillTiming.POST_USE, [T(E.PERMANENT_MOD, target="hit_count", delta=1)]),
+    ],
+
+    # 啃咬: 造成物伤，受奉献影响，每被影响1次能耗永久+1
+    "啃咬": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+    ],
+
+    # 沙涌: 天气改为沙暴，每过1回合能耗永久-1
+    "沙涌": [
+        SE(SkillTiming.ON_USE, [T(E.WEATHER, type="sandstorm", turns=5)]),
+    ],
+
+    # 撒娇: 造成魔伤3连击（萌化相关效果待萌化系统实现）
+    "撒娇": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+    ],
+
+    # ============================================================
+    #  P3 修复: 完全无配置的特殊技能
+    # ============================================================
+
+    # 充分燃烧: 敌方灼烧翻倍+触发1次灼烧伤害
+    "充分燃烧": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="double_enemy_burn_and_tick")]),
+    ],
+
+    # 冰锋横扫: 造成魔伤，威力=敌方技能总能耗×10
+    "冰锋横扫": [
+        SE(SkillTiming.PRE_USE, [T(E.POWER_DYNAMIC, condition="enemy_total_cost", multiplier=10)]),
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+    ],
+
+    # 暴风眼: 连击数+100%（翻倍）
+    "暴风眼": [
+        SE(SkillTiming.ON_USE, [T(E.SKILL_MOD, target="self", stat="hit_count_double", value=1)]),
+    ],
+
+    # 漫反射: 每种系别至多1个技能威力+35
+    "漫反射": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="modify_matching_skills", power_bonus=35, per_element_one=True)]),
+    ],
+
+    # 蓄水: 下次使用的技能能耗-6
+    "蓄水": [
+        SE(SkillTiming.ON_USE, [T(E.NEXT_ATTACK_MOD, cost_reduce=6)]),
+    ],
+
+    # 雾气环绕: 回复能量=敌方技能总能耗的一半
+    "雾气环绕": [
+        SE(SkillTiming.ON_USE, [T(E.HEAL_ENERGY, amount=0, per="enemy_total_cost_half")]),
+    ],
+
+    # 钢钻: 造成物伤，威力=两侧技能威力和÷3，传动
+    "钢钻": [
+        SE(SkillTiming.PRE_USE, [T(E.POWER_DYNAMIC, condition="adjacent_power_sum", divisor=3)]),
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+        SE(SkillTiming.POST_USE, [T(E.DRIVE, value=1)]),
+    ],
+
+    # 落井下毒: 敌方所有减益层数翻倍
+    "落井下毒": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="double_enemy_debuffs")]),
+    ],
+
+    # 虫群智慧: 随机获得2次奉献
+    "虫群智慧": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="grant_random_devotion", count=2)]),
+    ],
+
+    # 伪造账单: 若敌方本回合回复生命，改为失去2倍（先手+1，通过priority_mod设置）
+    "伪造账单": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="anti_heal", multiplier=2)]),
+    ],
+
+    # ── 以下依赖体重/萌化系统，暂用简化配置 ──
+
+    # 以重制重: 造成物伤，威力与体重相关（简化为固定80威力）
+    "以重制重": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+    ],
+
+    # 吨位压制: 造成物伤，威力与体重相关（简化为固定80威力）
+    "吨位压制": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+    ],
+
+    # 砂糖弹球: 造成物伤，威力与体重差相关（简化为固定80威力）
+    "砂糖弹球": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+    ],
+
+    # 萌化相关技能（待萌化系统）
+    # 生日蛋糕: 获得萌化+全能耗-4
+    # 示弱: 获得萌化+速度+150
+    # 反弹: 萌化转移给敌方
+    # 退化: 敌方获得1层萌化
+    # 逆向演化: 解除萌化→给敌方
+
+    # ============================================================
+    #  第四轮修复: 特殊技能完善
+    # ============================================================
+
+    # 借用: 每回合随机变成己方队伍中其他精灵的技能
+    "借用": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="borrow_ally_skill")]),
+    ],
+
+    # 取念: 每回合随机变成敌方任意精灵的技能，能耗-2
+    "取念": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="copy_enemy_skill", cost_reduce=2)]),
+    ],
+
+    # 复写: 每回合随机变成自己未携带的技能，能耗-2
+    "复写": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="copy_random_skill", cost_reduce=2)]),
+    ],
+
+    # 恶念交换: 与敌方交换生命比例
+    "恶念交换": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="swap_hp_ratio")]),
+    ],
+
+    # 欺诈契约: 与敌方交换增益和减益
+    "欺诈契约": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="swap_buffs")]),
+    ],
+
+    # 隐藏条款: 与敌方交换携带的技能
+    "隐藏条款": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="swap_skills")]),
+    ],
+
+    # 寄生种子: 敌方获得寄生层数（每层每回合-8%HP，己方+8%HP）
+    "寄生种子": [
+        SE(SkillTiming.ON_USE, [T(E.LEECH, stacks=1)]),
+    ],
+
+    # 攻击场地: 自己获得1层攻击印记
+    "攻击场地": [
+        SE(SkillTiming.ON_USE, [T(E.ATTACK_MARK, stacks=1, target="self")]),
+    ],
+
+    # 溶解液: 毒系35威力魔伤+敌方2层中毒
+    "溶解液": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE), T(E.POISON, stacks=2)]),
+    ],
+
+    # 荟萃: 释放所有携带的普通系技能（一回合），但能耗翻倍
+    "荟萃": [
+        SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="cast_all_normal_skills_double_cost")]),
+    ],
+
+    # 湿润印记: 自己获得1层湿润印记
+    "湿润印记": [
+        SE(SkillTiming.ON_USE, [T(E.MOISTURE_MARK, stacks=1, target="self")]),
+    ],
+
+    # 龙之舞(=龙吟): 蓄力，自己获得双攻+100%和速度+60
+    "龙之舞": [
+        SE(SkillTiming.ON_USE, [T(E.SELF_BUFF, atk=1.0, spatk=1.0, speed=0.6)]),
+    ],
+
+    # 随机变技能（过于特殊，当前不实现）
+    # 取念: 每回合随机变成敌方技能
+    # 复写: 每回合随机变成未携带技能
 }
 
 
@@ -1267,12 +1642,12 @@ ABILITY_EFFECTS = {
 
     # 洄游 (3只): 每次蓄力全技能能耗永久-1
     "洄游": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 蓄力系统未完善，暂占位
+        AE(Timing.PASSIVE, [T(E.CHARGE_COST_REDUCE, reduce=1)]),
     ],
 
     # 翼轴 (2只): 1号位技能获得迅捷+传动1
     "翼轴": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 位置系统未完善，暂占位
+        AE(Timing.ON_ENTER, [T(E.DRIVE_POSITION_SHIFT, slot=0, agility=True, drive=1)]),
     ],
 
     # 盲拧 (3只): 回合开始技能顺序打乱，4号位能耗-4
@@ -1282,7 +1657,7 @@ ABILITY_EFFECTS = {
 
     # 机械变式 (2只): 技能位置变化时能耗-1
     "机械变式": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 位置系统未完善，暂占位
+        AE(Timing.PASSIVE, [T(E.DRIVE_ON_POSITION_CHANGE, reduce=1)]),
     ],
 
     # === 涉及萌化系统的 ===
@@ -1309,36 +1684,36 @@ ABILITY_EFFECTS = {
 
     # === 涉及迸发系统的 ===
 
-    # 电流刺激 (4只): 攻击技能迸发威力+40
+    # 电流刺激 (4只): 迸发技能威力+40
     "电流刺激": [
-        AE(Timing.ON_ENTER, [T(E.ENTRY_BUFF, _params={"buff": {"atk": 0.1}, "duration": 1})]),  # 简化为入场首回合buff
+        AE(Timing.PASSIVE, [T(E.BURST_POWER_BONUS, bonus=40)]),
     ],
 
-    # 超负荷 (2只): 攻击技能迸发敌方全技能能耗+1
+    # 超负荷 (2只): 迸发技能让敌方全技能能耗+1
     "超负荷": [
-        AE(Timing.ON_ENTER, [T(E.ENEMY_ALL_COST_UP, amount=1)]),  # 简化为入场给敌方加能耗
+        AE(Timing.PASSIVE, [T(E.BURST_ENEMY_COST_UP, amount=1)]),
     ],
 
     # 生物电 (2只): 电系技能迸发能耗-2
     "生物电": [
-        AE(Timing.ON_ENTER, [T(E.SELF_BUFF, atk=0)]),  # 迸发系统未实现，暂占位
+        AE(Timing.PASSIVE, [T(E.BURST_ELEMENT_COST_REDUCE, element="电", reduce=2)]),
     ],
 
     # 连续负荷 (1只): 迸发效果延长1回合
     "连续负荷": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 迸发系统未实现，暂占位
+        AE(Timing.PASSIVE, [T(E.BURST_EXTEND, extend=1)]),
     ],
 
     # === 涉及奉献系统的 ===
 
     # 花精灵 (3只): 回合结束己方获得1次随机奉献
     "花精灵": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 奉献系统未实现，暂占位
+        AE(Timing.ON_TURN_END, [T(E.DEVOTION_GRANT_RANDOM)]),
     ],
 
     # 坚韧铠甲 (2只): 每受1次攻击己方获得1次随机奉献
     "坚韧铠甲": [
-        AE(Timing.ON_TAKE_HIT, [T(E.SELF_BUFF, atk=0)]),  # 奉献系统未实现，暂占位
+        AE(Timing.ON_TAKE_HIT, [T(E.DEVOTION_ON_HIT)]),
     ],
 
     # === 其余特殊机制 ===
@@ -1355,12 +1730,12 @@ ABILITY_EFFECTS = {
 
     # 营养液泡 (3只): 获得增益额外+2层
     "营养液泡": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 需改buff系统，暂占位
+        AE(Timing.PASSIVE, [T(E.BUFF_EXTRA_LAYERS, extra=2)]),
     ],
 
     # 系统发育 (3只): 获得能量/生命时分配给场下精灵
     "系统发育": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 复杂队伍共享机制，暂占位
+        AE(Timing.PASSIVE, [T(E.SHARE_GAINS)]),
     ],
 
     # 石头大餐 (3只): 能量不足时消耗5%HP代替1能量
@@ -1373,14 +1748,14 @@ ABILITY_EFFECTS = {
         AE(Timing.ON_ENTER, [T(E.ENERGY_NO_CAP)]),
     ],
 
-    # 契约的形状 (3只): 根据咕噜球入场不同效果
+    # 契约的形状 (3只): 根据咕噜球入场效果，默认绝缘球（+50速度+1层中毒）
     "契约的形状": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 无咕噜球系统，暂占位
+        AE(Timing.ON_ENTER, [T(E.CONTRACT_ENTRY, ball="绝缘球")]),
     ],
 
     # 嫉妒 (2只): 蓄力状态下可用任一技能
     "嫉妒": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 蓄力系统未完善，暂占位
+        AE(Timing.PASSIVE, [T(E.CHARGE_FREE_SKILL)]),
     ],
 
     # 游弋 (1只): 蓄力时可用任一技能+双防+100%
@@ -1398,44 +1773,44 @@ ABILITY_EFFECTS = {
         AE(Timing.PASSIVE, [T(E.FIXED_HIT_COUNT_ALL, count=2)]),
     ],
 
-    # 双向光速 (2只): 回合结束触发次数+1
+    # 双向光速 (2只): 回合结束效果触发次数+1
     "双向光速": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 需改turn_end系统，暂占位
+        AE(Timing.PASSIVE, [T(E.TURN_END_REPEAT, delta=1)]),
     ],
 
-    # 陨落 (1只): 回合结束触发次数-1
+    # 陨落 (1只): 回合结束效果触发次数-1
     "陨落": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 需改turn_end系统，暂占位
+        AE(Timing.PASSIVE, [T(E.TURN_END_SKIP, delta=1)]),
     ],
 
     # 倾轧 (1只): 能耗变化效果翻倍
     "倾轧": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 需改能耗系统，暂占位
+        AE(Timing.PASSIVE, [T(E.COST_CHANGE_DOUBLE)]),
     ],
 
-    # 泛音列 (2只): 使用状态技能后敌方获得聒噪效果
+    # 泛音列 (2只): 使用状态技能后敌方获得聒噪效果（攻击技能能耗+3，3回合）
     "泛音列": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 需要聒噪技能系统，暂占位
+        AE(Timing.ON_USE_SKILL, [T(E.NOISE_DEBUFF, cost_up=3, turns=3)], category="状态"),
     ],
 
     # 正位宝剑 (2只): 仅可使用1号位技能
     "正位宝剑": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 需改UI和action系统，暂占位
+        AE(Timing.PASSIVE, [T(E.SKILL_SLOT_LOCK, allowed_slots=[0])]),
     ],
 
     # 宝剑王牌 (1只): 仅可使用1号和3号位技能
     "宝剑王牌": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 需改UI和action系统，暂占位
+        AE(Timing.PASSIVE, [T(E.SKILL_SLOT_LOCK, allowed_slots=[0, 2])]),
     ],
 
     # 木桶戏法 (2只): 离场后替换精灵以木桶状态登场
     "木桶戏法": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 木桶状态未实现，暂占位
+        AE(Timing.ON_LEAVE, [T(E.BARREL_STATE)]),
     ],
 
-    # 稀兽花宝 (1只): 根据血脉入场不同效果
+    # 稀兽花宝 (1只): 根据系别入场效果，默认萌系（降低敌方60%双攻）
     "稀兽花宝": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 血脉系统未实现，暂占位
+        AE(Timing.ON_ENTER, [T(E.BLOODLINE_ENTRY, element="萌")]),
     ],
 
     # 水翼飞升 (1只): 己方每用1次水系技能，入场能耗-1 + 能耗为0的技能威力+30%

@@ -459,6 +459,23 @@ class BattleState:
     skill_use_counts_a: Dict[str, int] = field(default_factory=dict)
     skill_use_counts_b: Dict[str, int] = field(default_factory=dict)
 
+    # 奉献系统 (全队共享、换人保留、无法被清除、buff不被消耗)
+    # 结构: {"假寐": 2, "飞断": 1, ...}  值为层数
+    devotion_a: Dict[str, int] = field(default_factory=dict)
+    devotion_b: Dict[str, int] = field(default_factory=dict)
+
+    # 木桶状态待生效标记
+    _barrel_pending_a: bool = False
+    _barrel_pending_b: bool = False
+
+    # 迸发系统：记录每只精灵入场后是否已过第一回合
+    # key=精灵name, value=入场回合号
+    burst_entry_turn_a: Dict[str, int] = field(default_factory=dict)
+    burst_entry_turn_b: Dict[str, int] = field(default_factory=dict)
+
+    def _get_devotion(self, team: str) -> Dict[str, int]:
+        return self.devotion_a if team == "a" else self.devotion_b
+
     def get_current(self, team: str) -> Pokemon:
         if team == "a":
             return self.team_a[self.current_a]
@@ -483,5 +500,11 @@ class BattleState:
             pending_switch_requests=[],
             skill_use_counts_a=dict(self.skill_use_counts_a),
             skill_use_counts_b=dict(self.skill_use_counts_b),
+            devotion_a=dict(self.devotion_a),
+            devotion_b=dict(self.devotion_b),
+            _barrel_pending_a=self._barrel_pending_a,
+            _barrel_pending_b=self._barrel_pending_b,
+            burst_entry_turn_a=dict(self.burst_entry_turn_a),
+            burst_entry_turn_b=dict(self.burst_entry_turn_b),
         )
         return bs

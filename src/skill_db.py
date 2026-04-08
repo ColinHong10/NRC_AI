@@ -137,6 +137,12 @@ def get_all_skills() -> dict:
     return dict(_skill_db)
 
 
+def get_all_skill_names() -> list:
+    """获取所有技能名列表"""
+    load_skills()
+    return list(_skill_db.keys())
+
+
 def get_skill_learners(skill_name: str) -> List[str]:
     """获取能学习某技能的精灵列表"""
     conn = _get_conn()
