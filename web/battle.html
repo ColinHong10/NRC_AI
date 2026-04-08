@@ -9,256 +9,346 @@
    CSS 变量 & Reset
 ═══════════════════════════════════════ */
 :root {
-  --bg-dark:    #0d1117;
-  --bg-field:   #161b22;
-  --bg-panel:   #1c2128;
-  --bg-card:    #21262d;
-  --bg-card-h:  #2d333b;
-  --border:     #30363d;
-  --accent:     #58a6ff;
-  --accentg:    rgba(88,166,255,.3);
-  --green:      #3fb950;
-  --yellow:     #d29922;
-  --red:        #f85149;
-  --purple:     #bc8cff;
-  --orange:     #e3b341;
-  --text:       #e6edf3;
-  --dim:        #8b949e;
-  --muted:      #484f58;
-  --hp-g:       #3fb950;
-  --hp-y:       #d29922;
-  --hp-r:       #f85149;
-  --r:          10px;
-  --rs:         6px;
+  --bg-dark:    #0a0e1a;
+  --bg-field:   #111827;
+  --bg-panel:   #0f1623;
+  --bg-card:    #1a2235;
+  --bg-card-h:  #233049;
+  --border:     #2a3a55;
+  --accent:     #4fc3f7;
+  --accentg:    rgba(79,195,247,.3);
+  --green:      #4ade80;
+  --yellow:     #fbbf24;
+  --red:        #f87171;
+  --purple:     #c084fc;
+  --orange:     #fb923c;
+  --pink:       #f472b6;
+  --text:       #e2e8f0;
+  --dim:        #94a3b8;
+  --muted:      #475569;
+  --hp-g:       #4ade80;
+  --hp-y:       #fbbf24;
+  --hp-r:       #f87171;
+  --r:          12px;
+  --rs:         8px;
+  --field-h:    320px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-dark);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 
 /* ═══ 顶栏 ═══ */
-#top-bar{background:var(--bg-field);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;height:46px}
-#top-bar h1{font-size:14px;font-weight:700;color:var(--accent)}
-#turn-info{font-size:12px;color:var(--dim)}
-#conn-status{font-size:11px;padding:2px 10px;border-radius:20px;background:var(--bg-card);border:1px solid var(--border)}
-#conn-status.connected{color:var(--green);border-color:var(--green)}
-#conn-status.disconnected{color:var(--red);border-color:var(--red)}
+#top-bar{background:linear-gradient(90deg,#0a1628,#111e3a);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;height:46px;box-shadow:0 2px 12px rgba(0,0,0,.4)}
+#top-bar h1{font-size:14px;font-weight:700;color:var(--accent);letter-spacing:.5px}
+#turn-info{font-size:12px;color:var(--dim);background:rgba(79,195,247,.08);padding:3px 10px;border-radius:20px;border:1px solid rgba(79,195,247,.2)}
+#conn-status{font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg-card);border:1px solid var(--border)}
+#conn-status.connected{color:var(--green);border-color:rgba(74,222,128,.4)}
+#conn-status.disconnected{color:var(--red);border-color:rgba(248,113,113,.3)}
 
 /* ═══ 主体 ═══ */
-#main{display:grid;grid-template-columns:1fr 320px;flex:1;overflow:hidden}
+#main{display:grid;grid-template-columns:1fr 300px;flex:1;overflow:hidden}
 
 /* ═══ 战场 ═══ */
 #battlefield{display:flex;flex-direction:column;overflow:hidden}
 
 /* ── arena ── */
-#arena{position:relative;height:300px;flex-shrink:0;
-  background:radial-gradient(ellipse 60% 35% at 50% 75%,rgba(88,166,255,.06) 0%,transparent 70%),
-             linear-gradient(180deg,#0a0f1a 0%,#0d1520 60%,#142030 100%);
-  border-bottom:1px solid var(--border);overflow:hidden}
-#arena::after{content:'';position:absolute;bottom:72px;left:0;right:0;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(88,166,255,.2),transparent)}
-
-/* 精灵阴影 */
-.poke-shadow{position:absolute;bottom:62px;width:80px;height:12px;
-  background:radial-gradient(ellipse,rgba(0,0,0,.55) 0%,transparent 70%);border-radius:50%}
-#shadow-a{left:16%;transform:translateX(-50%)}
-#shadow-b{right:16%;transform:translateX(50%)}
-
-/* 精灵槽 */
-.poke-slot{position:absolute;bottom:64px;display:flex;flex-direction:column;align-items:center;gap:3px;transition:transform .15s}
-#slot-a{left:16%;transform:translateX(-50%)}
-#slot-b{right:16%;transform:translateX(50%)}
-
-/* 精灵图 */
-.sprite{width:88px;height:88px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;position:relative;filter:drop-shadow(0 4px 10px rgba(0,0,0,.8));transition:opacity .3s}
-#sprite-a{transform:scaleX(-1)}
-.sprite-ring{position:absolute;inset:-4px;border-radius:50%;border:2px solid transparent}
-#slot-a .sprite-ring{border-color:rgba(88,166,255,.5);box-shadow:0 0 10px rgba(88,166,255,.25)}
-#slot-b .sprite-ring{border-color:rgba(248,81,73,.5);box-shadow:0 0 10px rgba(248,81,73,.25)}
-.sprite-label{font-size:10px;font-weight:600;color:var(--dim);text-shadow:0 1px 3px rgba(0,0,0,.8)}
-
-/* 防御盾牌（覆盖在精灵前面） */
-.shield-overlay{
-  position:absolute;
-  width:60px;height:80px;
-  border-radius:50% 50% 40% 40%;
-  border:3px solid;
-  opacity:0;
-  pointer-events:none;
-  z-index:5;
-  transition:opacity .2s;
+#arena{
+  position:relative;height:var(--field-h);flex-shrink:0;overflow:hidden;
+  background:
+    radial-gradient(ellipse 120% 60% at 50% 0%,#1a3a6e 0%,transparent 60%),
+    linear-gradient(180deg,#0d1f42 0%,#102040 40%,#172d50 70%,#1a3a28 85%,#1d4a30 100%);
 }
-#shield-a{
-  left:calc(16% - 30px + 44px);  /* slot-a 右侧 */
-  bottom:72px;
-  border-color:rgba(88,166,255,.9);
-  background:rgba(88,166,255,.12);
-  box-shadow:0 0 16px rgba(88,166,255,.5),inset 0 0 10px rgba(88,166,255,.2);
-  transform:translateX(-50%);
+/* 天空云层 */
+#arena::before{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 30% 15% at 20% 25%,rgba(255,255,255,.06) 0%,transparent 70%),
+    radial-gradient(ellipse 20% 10% at 70% 20%,rgba(255,255,255,.04) 0%,transparent 70%),
+    radial-gradient(ellipse 15% 8% at 50% 30%,rgba(255,255,255,.03) 0%,transparent 70%);
+  pointer-events:none
 }
-#shield-b{
-  right:calc(16% - 30px + 44px);
-  bottom:72px;
-  border-color:rgba(248,81,73,.9);
-  background:rgba(248,81,73,.12);
-  box-shadow:0 0 16px rgba(248,81,73,.5),inset 0 0 10px rgba(248,81,73,.2);
-  transform:translateX(50%);
+/* 草地平台 */
+#arena::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:42%;
+  background:
+    linear-gradient(180deg,transparent 0%,rgba(26,70,40,.9) 30%,rgba(22,60,34,1) 100%);
+  border-top:2px solid rgba(60,160,80,.3);
+  pointer-events:none
 }
-.shield-overlay.show{opacity:1}
-/* 盾牌纹路装饰 */
-.shield-overlay::before{
-  content:'🛡';
-  position:absolute;
-  top:50%;left:50%;
-  transform:translate(-50%,-50%);
-  font-size:22px;
-  filter:drop-shadow(0 0 4px currentColor);
+/* 战斗平台（我方） */
+.platform{
+  position:absolute;bottom:34%;width:140px;height:22px;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(0,0,0,.35) 0%,transparent 70%);
+  pointer-events:none
+}
+#plat-a{left:18%;transform:translateX(-50%)}
+#plat-b{right:18%;transform:translateX(50%)}
+/* 分隔线 */
+.field-line{
+  position:absolute;bottom:38%;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(100,200,120,.25),transparent);
+  pointer-events:none
 }
 
-/* HP 条（顶部） */
-.hp-bar-wrap{position:absolute;top:14px;width:220px}
-#hpbar-a{left:16px}
-#hpbar-b{right:16px}
-.hpbar-name{font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:5px}
-.type-badge{font-size:9px;padding:1px 5px;border-radius:4px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
-.energy-dots{margin-left:auto;display:flex;gap:2px}
-.e-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);transition:background .2s}
-.e-dot.on{background:var(--accent);box-shadow:0 0 3px var(--accentg)}
-.hp-track{height:7px;background:rgba(255,255,255,.07);border-radius:4px;overflow:hidden}
-.hp-fill{height:100%;border-radius:4px;transition:width .4s ease,background .4s;background:var(--hp-g)}
-.hp-text{font-size:9px;color:var(--dim);margin-top:2px;display:flex;justify-content:space-between}
-.buff-row{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;min-height:16px}
-.buff-tag{font-size:9px;padding:1px 5px;border-radius:8px;font-weight:600;line-height:1.4}
-.buff-up{background:rgba(74,222,128,.18);color:#4ade80;border:1px solid rgba(74,222,128,.35)}
-.buff-down{background:rgba(248,113,113,.18);color:#f87171;border:1px solid rgba(248,113,113,.35)}
-.buff-ability{background:rgba(168,85,247,.18);color:#c084fc;border:1px solid rgba(168,85,247,.35)}
-.buff-status{background:rgba(251,191,36,.18);color:#fbbf24;border:1px solid rgba(251,191,36,.35)}
+/* ── HP 条（顶部覆盖） ── */
+.hp-panel{
+  position:absolute;top:12px;width:230px;
+  background:rgba(10,18,40,.82);
+  border:1px solid rgba(79,195,247,.18);
+  border-radius:10px;
+  padding:8px 10px;
+  backdrop-filter:blur(6px);
+  box-shadow:0 4px 20px rgba(0,0,0,.5)
+}
+#hpbar-a{left:12px}
+#hpbar-b{right:12px}
+.hpbar-top{display:flex;align-items:center;gap:5px;margin-bottom:5px}
+.hpbar-name{font-size:12px;font-weight:700;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.type-badge{font-size:9px;padding:1px 6px;border-radius:5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0}
+/* 能量条（替代圆点） */
+.energy-bar-wrap{margin-bottom:5px}
+.energy-label{font-size:8px;color:var(--dim);margin-bottom:2px;display:flex;justify-content:space-between}
+.energy-track{height:5px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden}
+.energy-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#60a5fa,#38bdf8);transition:width .3s ease;box-shadow:0 0 6px rgba(79,195,247,.5)}
+/* HP 条 */
+.hp-track{height:8px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;margin-bottom:3px}
+.hp-fill{height:100%;border-radius:5px;transition:width .45s ease,background .45s;background:var(--hp-g);box-shadow:0 0 8px currentColor}
+.hp-text{font-size:9px;color:var(--dim);display:flex;justify-content:space-between}
+/* 状态行 */
+.buff-row{display:flex;flex-wrap:wrap;gap:2px;margin-top:4px;min-height:14px}
+.buff-tag{font-size:8px;padding:1px 5px;border-radius:6px;font-weight:600;line-height:1.5}
+.buff-up{background:rgba(74,222,128,.18);color:#4ade80;border:1px solid rgba(74,222,128,.3)}
+.buff-down{background:rgba(248,113,113,.18);color:#f87171;border:1px solid rgba(248,113,113,.3)}
+.buff-ability{background:rgba(192,132,252,.18);color:#c084fc;border:1px solid rgba(192,132,252,.3)}
+.buff-status{background:rgba(251,191,36,.18);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+.buff-cute{background:rgba(244,114,182,.18);color:#f472b6;border:1px solid rgba(244,114,182,.3)}
 
 /* MP 点 */
-.mp-wrap{position:absolute;bottom:12px;display:flex;gap:4px}
-#mp-a{left:16px}
-#mp-b{right:16px}
-.mp-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 3px var(--accentg);transition:all .3s}
-.mp-dot.lost{background:var(--muted);box-shadow:none}
+.mp-wrap{position:absolute;top:14px;display:flex;gap:5px;align-items:center}
+#mp-a{left:250px}
+#mp-b{right:250px;flex-direction:row-reverse}
+.mp-gem{width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#7dd3fc,#0284c7);box-shadow:0 0 6px rgba(79,195,247,.6);transition:all .3s}
+.mp-gem.lost{background:rgba(255,255,255,.1);box-shadow:none}
+
+/* ── 精灵槽 ── */
+.poke-slot{
+  position:absolute;bottom:calc(34% - 10px);
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  transition:transform .18s ease
+}
+#slot-a{left:18%;transform:translateX(-50%)}
+#slot-b{right:18%;transform:translateX(50%)}
+
+/* 精灵立绘图 */
+.sprite-img{
+  width:120px;height:120px;
+  object-fit:contain;
+  filter:drop-shadow(0 6px 20px rgba(0,0,0,.8));
+  transition:opacity .35s,filter .35s;
+  image-rendering:-webkit-optimize-contrast
+}
+#sprite-a .sprite-img{transform:scaleX(-1)}
+
+/* 精灵背光圈 */
+.sprite-glow{
+  position:absolute;bottom:0;width:100px;height:30px;border-radius:50%;
+  pointer-events:none
+}
+#slot-a .sprite-glow{background:radial-gradient(ellipse,rgba(79,195,247,.35) 0%,transparent 70%)}
+#slot-b .sprite-glow{background:radial-gradient(ellipse,rgba(248,113,113,.35) 0%,transparent 70%)}
+
+/* Emoji 降级精灵（无图时） */
+.sprite-emoji{
+  width:120px;height:120px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:64px;
+  filter:drop-shadow(0 6px 16px rgba(0,0,0,.7));
+}
+#sprite-a .sprite-emoji{transform:scaleX(-1)}
+
+.sprite-label{
+  font-size:10px;font-weight:700;color:rgba(255,255,255,.7);
+  text-shadow:0 1px 4px rgba(0,0,0,1);
+  background:rgba(0,0,0,.4);padding:1px 8px;border-radius:8px
+}
+
+/* 防御盾牌 */
+.shield-overlay{
+  position:absolute;width:64px;height:84px;border-radius:50% 50% 40% 40%;
+  border:2px solid;opacity:0;pointer-events:none;z-index:5;transition:opacity .2s
+}
+#shield-a{left:calc(18% - 32px + 60px);bottom:calc(34%);border-color:rgba(79,195,247,.9);background:rgba(79,195,247,.1);box-shadow:0 0 20px rgba(79,195,247,.5);transform:translateX(-50%)}
+#shield-b{right:calc(18% - 32px + 60px);bottom:calc(34%);border-color:rgba(248,113,113,.9);background:rgba(248,113,113,.1);box-shadow:0 0 20px rgba(248,113,113,.5);transform:translateX(50%)}
+.shield-overlay.show{opacity:1}
+.shield-overlay::before{content:'🛡';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:24px;filter:drop-shadow(0 0 4px currentColor)}
 
 /* 类型色 */
-.t-normal{background:#9ca3af;color:#111}.t-fire{background:#ef4444}.t-water{background:#3b82f6}
-.t-electric{background:#eab308;color:#111}.t-grass{background:#22c55e;color:#111}
-.t-ice{background:#67e8f9;color:#111}.t-fighting{background:#c2410c}.t-poison{background:#a855f7}
-.t-ground{background:#d97706}.t-flying{background:#a78bfa}.t-psychic{background:#ec4899}
-.t-bug{background:#84cc16;color:#111}.t-rock{background:#78716c}.t-ghost{background:#6366f1}
-.t-dragon{background:#1d4ed8}.t-dark{background:#374151}.t-steel{background:#94a3b8;color:#111}
-.t-fairy{background:#f472b6;color:#111}
+.t-normal{background:#6b7280;color:#fff}
+.t-fire{background:#dc2626}
+.t-water{background:#2563eb}
+.t-electric{background:#ca8a04;color:#fff}
+.t-grass{background:#16a34a}
+.t-ice{background:#0891b2}
+.t-fighting{background:#b45309}
+.t-poison{background:#7c3aed}
+.t-ground{background:#92400e}
+.t-flying{background:#6d28d9}
+.t-psychic{background:#be185d}
+.t-bug{background:#4d7c0f}
+.t-rock{background:#57534e}
+.t-ghost{background:#4338ca}
+.t-dragon{background:#1d4ed8}
+.t-dark{background:#1f2937}
+.t-steel{background:#475569}
+.t-fairy{background:#be185d}
+.t-light{background:#854d0e}
 
 /* ═══ 队伍预览 ═══ */
-#team-overview{display:flex;justify-content:space-between;padding:8px 14px;background:var(--bg-field);border-bottom:1px solid var(--border);gap:8px;flex-shrink:0}
+#team-overview{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:7px 14px;
+  background:linear-gradient(180deg,#0d1628,#111e38);
+  border-bottom:1px solid var(--border);
+  flex-shrink:0
+}
 .team-strip{display:flex;gap:5px;align-items:center}
-.strip-label{font-size:9px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.7px;margin-right:2px}
-.mini-poke{width:34px;height:34px;border-radius:6px;background:var(--bg-card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;position:relative;transition:border-color .2s;cursor:default}
-.mini-poke.active{border-color:var(--accent)}
-.mini-poke.fainted{opacity:.25;filter:grayscale(1)}
-.mini-hp-wrap{position:absolute;bottom:-2px;left:2px;right:2px;height:3px;background:var(--bg-dark);border-radius:2px;overflow:hidden}
-.mini-hp-fill{height:100%;border-radius:2px;transition:width .4s}
+.strip-label{font-size:9px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-right:4px}
+.mini-poke{
+  width:38px;height:38px;border-radius:8px;
+  background:var(--bg-card);border:2px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  position:relative;transition:border-color .2s,box-shadow .2s;cursor:default;
+  overflow:hidden
+}
+.mini-poke.active{border-color:var(--accent);box-shadow:0 0 8px var(--accentg)}
+.mini-poke.fainted{opacity:.2;filter:grayscale(1)}
+.mini-poke img{width:32px;height:32px;object-fit:contain}
+.mini-poke .mini-emoji{font-size:18px}
+.mini-hp-wrap{position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(0,0,0,.5)}
+.mini-hp-fill{height:100%;transition:width .4s}
 
 /* ═══ 操作面板 ═══ */
 #action-panel{flex:1;padding:10px 14px;display:flex;flex-direction:column;gap:8px;overflow:hidden;position:relative}
-#action-title{font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.7px}
+#action-title{font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;gap:6px}
+#action-title::before{content:'';width:3px;height:12px;background:var(--accent);border-radius:2px}
 #skill-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-.skill-btn{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--rs);padding:9px 11px;cursor:pointer;text-align:left;color:var(--text);transition:background .15s,border-color .15s,transform .1s}
-.skill-btn:hover:not(:disabled){background:var(--bg-card-h);border-color:var(--accent);transform:translateY(-1px)}
+.skill-btn{
+  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--rs);
+  padding:9px 11px;cursor:pointer;text-align:left;color:var(--text);
+  transition:background .15s,border-color .15s,transform .1s,box-shadow .15s
+}
+.skill-btn:hover:not(:disabled){
+  background:var(--bg-card-h);border-color:rgba(79,195,247,.5);
+  transform:translateY(-2px);box-shadow:0 4px 14px rgba(0,0,0,.4)
+}
 .skill-btn:active:not(:disabled){transform:translateY(0)}
-.skill-btn:disabled{opacity:.4;cursor:not-allowed}
-.skill-btn .sname{font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
-.skill-btn .scost{font-size:11px;font-weight:700;color:var(--accent)}
-.skill-btn .smeta{font-size:9px;color:var(--dim);display:flex;gap:3px;flex-wrap:wrap}
-.skill-btn .spower{font-weight:600}
-.tag-pill{background:rgba(88,166,255,.12);border:1px solid rgba(88,166,255,.2);border-radius:3px;padding:0 3px;font-size:8px;color:var(--accent)}
-.tag-counter{background:rgba(188,140,255,.12);border:1px solid rgba(188,140,255,.25);color:var(--purple)}
-.skill-btn.cd-btn{border-color:var(--yellow)}
+.skill-btn:disabled{opacity:.35;cursor:not-allowed}
+.skill-btn .sname{font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.skill-btn .scost{font-size:11px;font-weight:800;color:var(--accent);background:rgba(79,195,247,.12);padding:1px 5px;border-radius:4px}
+.skill-btn .smeta{font-size:9px;color:var(--dim);display:flex;gap:3px;flex-wrap:wrap;align-items:center}
+.skill-btn .spower{font-weight:700;color:var(--orange)}
+.tag-pill{background:rgba(79,195,247,.1);border:1px solid rgba(79,195,247,.2);border-radius:3px;padding:0 3px;font-size:8px;color:var(--accent)}
+.tag-counter{background:rgba(192,132,252,.1);border:1px solid rgba(192,132,252,.2);color:var(--purple)}
+.skill-btn.cd-btn{border-color:rgba(251,191,36,.4)}
 .skill-btn.cd-btn .sname{color:var(--yellow)}
 
 /* 工具行 */
 #util-row{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-.util-btn{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--rs);padding:7px 10px;cursor:pointer;display:flex;align-items:center;gap:5px;color:var(--text);font-size:12px;font-weight:600;transition:background .15s,border-color .15s}
-.util-btn:hover:not(:disabled){background:var(--bg-card-h);border-color:var(--accent)}
-.util-btn:disabled{opacity:.4;cursor:not-allowed}
+.util-btn{
+  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--rs);
+  padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;
+  color:var(--text);font-size:12px;font-weight:600;
+  transition:background .15s,border-color .15s,transform .1s
+}
+.util-btn:hover:not(:disabled){background:var(--bg-card-h);border-color:rgba(79,195,247,.5);transform:translateY(-1px)}
+.util-btn:disabled{opacity:.35;cursor:not-allowed}
 .util-btn .icon{font-size:15px}
 
 /* 换人面板 */
-#switch-panel{display:none;flex-direction:column;gap:5px;overflow-y:auto;max-height:140px}
+#switch-panel{display:none;flex-direction:column;gap:5px;overflow-y:auto;max-height:150px}
 #switch-panel.open{display:flex}
-.sw-card{display:flex;align-items:center;gap:7px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--rs);padding:7px 9px;cursor:pointer;transition:background .15s,border-color .15s;color:var(--text);font-size:11px}
-.sw-card:hover:not(:disabled){background:var(--bg-card-h);border-color:var(--green)}
-.sw-card:disabled{opacity:.35;cursor:not-allowed}
-.sw-card .sw-icon{font-size:20px;flex-shrink:0}
-.sw-card .sw-info{flex:1;min-width:0}
-.sw-card .sw-name{font-weight:700;font-size:12px}
-.sw-card .sw-hp{font-size:9px;color:var(--dim)}
-/* 克制标签 */
-.adv-badge{
-  font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700;white-space:nowrap;flex-shrink:0
+.sw-card{
+  display:flex;align-items:center;gap:8px;
+  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--rs);
+  padding:7px 10px;cursor:pointer;
+  transition:background .15s,border-color .15s;color:var(--text);font-size:11px
 }
-.adv-super{background:rgba(63,185,80,.2);border:1px solid rgba(63,185,80,.4);color:var(--green)}
-.adv-weak {background:rgba(248,81,73,.15);border:1px solid rgba(248,81,73,.3);color:var(--red)}
-.adv-norm {background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--dim)}
-#switch-back{font-size:10px;color:var(--dim);cursor:pointer;text-decoration:underline;background:none;border:none;padding:2px 0}
+.sw-card:hover:not(:disabled){background:var(--bg-card-h);border-color:rgba(74,222,128,.4)}
+.sw-card:disabled{opacity:.3;cursor:not-allowed}
+.sw-icon-wrap{width:32px;height:32px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.sw-icon-wrap img{width:32px;height:32px;object-fit:contain}
+.sw-icon{font-size:22px}
+.sw-info{flex:1;min-width:0}
+.sw-name{font-weight:700;font-size:12px}
+.sw-hp{font-size:9px;color:var(--dim)}
+.adv-badge{font-size:8px;padding:1px 5px;border-radius:3px;font-weight:700;white-space:nowrap;flex-shrink:0}
+.adv-super{background:rgba(74,222,128,.2);border:1px solid rgba(74,222,128,.4);color:var(--green)}
+.adv-weak{background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.3);color:var(--red)}
+.adv-norm{background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--dim)}
+#switch-back{font-size:10px;color:var(--dim);cursor:pointer;text-decoration:none;background:none;border:none;padding:3px 0;opacity:.7}
+#switch-back:hover{opacity:1}
 
 /* 等待遮罩 */
-#wait-mask{display:none;position:absolute;inset:0;background:rgba(13,17,23,.6);border-radius:var(--r);align-items:center;justify-content:center;flex-direction:column;gap:7px;z-index:10}
+#wait-mask{display:none;position:absolute;inset:0;background:rgba(10,14,26,.7);border-radius:var(--r);align-items:center;justify-content:center;flex-direction:column;gap:8px;z-index:10;backdrop-filter:blur(3px)}
 #wait-mask.show{display:flex}
 #wait-mask .wtext{font-size:13px;font-weight:600;color:var(--dim)}
-.spinner{width:26px;height:26px;border:3px solid rgba(88,166,255,.2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+.spinner{width:28px;height:28px;border:3px solid rgba(79,195,247,.15);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* 起始 & 结束 */
-#start-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;background:var(--bg-field);border-radius:var(--r)}
-#start-screen h2{font-size:18px;color:var(--accent)}
-#start-screen p{font-size:12px;color:var(--dim);text-align:center;line-height:1.6}
-.start-btn{background:var(--accent);color:#0d1117;border:none;border-radius:var(--rs);padding:9px 26px;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .15s,transform .1s}
+#start-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;background:var(--bg-field);border-radius:var(--r);border:1px solid var(--border)}
+#start-screen h2{font-size:18px;color:var(--accent);font-weight:800}
+#start-screen p{font-size:12px;color:var(--dim);text-align:center;line-height:1.7}
+.start-btn{background:linear-gradient(135deg,#0284c7,#0ea5e9);color:#fff;border:none;border-radius:var(--rs);padding:10px 28px;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .15s,transform .1s;box-shadow:0 4px 16px rgba(14,165,233,.4)}
 .start-btn:hover{opacity:.88;transform:translateY(-1px)}
-#gameover-banner{display:none;background:rgba(13,17,23,.92);border:1px solid var(--border);border-radius:var(--r);padding:18px;text-align:center;flex-direction:column;gap:10px;flex-shrink:0}
+#gameover-banner{display:none;background:rgba(10,14,26,.95);border:1px solid var(--border);border-radius:var(--r);padding:20px;text-align:center;flex-direction:column;gap:12px;flex-shrink:0;backdrop-filter:blur(8px)}
 #gameover-banner.show{display:flex}
-#gameover-title{font-size:18px;font-weight:800}
-.again-btn{background:var(--accent);color:#0d1117;border:none;border-radius:var(--rs);padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer}
+#gameover-title{font-size:20px;font-weight:900}
+.again-btn{background:linear-gradient(135deg,#0284c7,#0ea5e9);color:#fff;border:none;border-radius:var(--rs);padding:9px 22px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(14,165,233,.35)}
 .again-btn:hover{opacity:.85}
 
 /* ═══ 右侧播报 ═══ */
 #side-panel{background:var(--bg-panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-#log-header{padding:10px 14px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.7px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-#log-clear{background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px}
+#log-header{padding:10px 14px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:rgba(79,195,247,.04)}
+#log-clear{background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px;transition:color .15s}
 #log-clear:hover{color:var(--dim)}
-#battle-log{flex:1;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:1px;font-size:11px;line-height:1.55;color:var(--text)}
+#battle-log{flex:1;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:1px;font-size:11px;line-height:1.6;color:var(--text)}
 #battle-log::-webkit-scrollbar{width:3px}
 #battle-log::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 .log-line{padding:1px 0}
-.log-sep{border-top:1px solid var(--border);margin:4px 0;color:var(--dim);font-weight:600;font-size:10px;padding-top:4px}
+.log-sep{border-top:1px solid var(--border);margin:5px 0;color:var(--muted);font-weight:600;font-size:10px;padding-top:4px}
 .log-win{color:var(--green);font-weight:700}
 .log-lose{color:var(--red);font-weight:700}
 .log-dmg{color:#fca5a5}
 .log-heal{color:var(--green)}
 .log-status{color:var(--purple)}
 .log-mp{color:var(--yellow)}
+.log-cute{color:var(--pink)}
 
 /* ═══ 动画 ═══ */
-@keyframes atk-a{0%{transform:translateX(-50%) translateX(0)}40%{transform:translateX(-50%) translateX(36px)}70%{transform:translateX(-50%) translateX(-3px)}100%{transform:translateX(-50%) translateX(0)}}
-@keyframes atk-b{0%{transform:translateX(50%) translateX(0)}40%{transform:translateX(50%) translateX(-36px)}70%{transform:translateX(50%) translateX(3px)}100%{transform:translateX(50%) translateX(0)}}
-@keyframes hit-flash{0%,100%{filter:drop-shadow(0 4px 10px rgba(0,0,0,.8))}35%{filter:drop-shadow(0 0 18px rgba(248,81,73,1)) brightness(2.2)}65%{filter:drop-shadow(0 4px 10px rgba(0,0,0,.8)) brightness(1.4)}}
-@keyframes shield-pulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.08)}}
-@keyframes shield-b-pulse{0%,100%{transform:translateX(50%) scale(1)}50%{transform:translateX(50%) scale(1.08)}}
-@keyframes faint-drop{to{opacity:0;transform:translateY(18px) scale(.8)}}
-@keyframes float-up{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-28px)}}
-.slot-atk-a{animation:atk-a .42s ease}
-.slot-atk-b{animation:atk-b .42s ease}
-.sprite-hit{animation:hit-flash .45s ease}
-.sprite-faint{animation:faint-drop .55s ease forwards}
+@keyframes atk-a{0%{transform:translateX(-50%) translateX(0)}40%{transform:translateX(-50%) translateX(42px)}70%{transform:translateX(-50%) translateX(-4px)}100%{transform:translateX(-50%) translateX(0)}}
+@keyframes atk-b{0%{transform:translateX(50%) translateX(0)}40%{transform:translateX(50%) translateX(-42px)}70%{transform:translateX(50%) translateX(4px)}100%{transform:translateX(50%) translateX(0)}}
+@keyframes hit-flash{0%,100%{filter:drop-shadow(0 6px 20px rgba(0,0,0,.8))}35%{filter:drop-shadow(0 0 22px rgba(248,113,113,1)) brightness(2.5)}65%{filter:drop-shadow(0 6px 20px rgba(0,0,0,.8)) brightness(1.5)}}
+@keyframes shield-pulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.1)}}
+@keyframes shield-b-pulse{0%,100%{transform:translateX(50%) scale(1)}50%{transform:translateX(50%) scale(1.1)}}
+@keyframes faint-drop{to{opacity:0;transform:translateY(24px) scale(.75)}}
+@keyframes float-up{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-36px)}}
+@keyframes slide-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes entry-bounce{0%{transform:translateY(20px) scale(.85);opacity:0}60%{transform:translateY(-5px) scale(1.04)}100%{transform:translateY(0) scale(1);opacity:1}}
+.slot-atk-a{animation:atk-a .44s ease}
+.slot-atk-b{animation:atk-b .44s ease}
+.sprite-hit{animation:hit-flash .5s ease}
+.sprite-faint{animation:faint-drop .6s ease forwards}
 .shield-pulse-a{animation:shield-pulse .5s ease}
 .shield-pulse-b{animation:shield-b-pulse .5s ease}
-.float-dmg{position:absolute;font-size:15px;font-weight:900;pointer-events:none;animation:float-up .85s ease forwards;text-shadow:0 1px 4px rgba(0,0,0,.8);z-index:20}
+.float-dmg{position:absolute;font-size:16px;font-weight:900;pointer-events:none;animation:float-up .9s ease forwards;text-shadow:0 2px 8px rgba(0,0,0,.9);z-index:20}
+.sprite-entry{animation:entry-bounce .55s cubic-bezier(.34,1.56,.64,1) forwards}
 </style>
 </head>
 <body>
 
 <!-- 顶栏 -->
 <div id="top-bar">
-  <h1>🐾 洛克王国战斗模拟器</h1>
+  <h1>🐾 洛克王国 · 战斗模拟器</h1>
   <span id="turn-info">—</span>
   <span id="conn-status" class="disconnected">● 未连接</span>
 </div>
@@ -269,29 +359,46 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-dark);color
 
     <!-- 战场画布 -->
     <div id="arena">
-      <!-- HP 条 -->
-      <div class="hp-bar-wrap" id="hpbar-a">
-        <div class="hpbar-name">
-          <span id="name-a">—</span>
+      <!-- 草地装饰 -->
+      <div class="field-line"></div>
+      <div class="platform" id="plat-a"></div>
+      <div class="platform" id="plat-b"></div>
+
+      <!-- HP 面板 A（玻璃卡片） -->
+      <div class="hp-panel" id="hpbar-a">
+        <div class="hpbar-top">
+          <span class="hpbar-name" id="name-a">—</span>
           <span id="type-a" class="type-badge"></span>
-          <div class="energy-dots" id="energy-a"></div>
+        </div>
+        <div class="energy-bar-wrap">
+          <div class="energy-label">
+            <span>能量</span><span id="energy-text-a">0/10</span>
+          </div>
+          <div class="energy-track"><div class="energy-fill" id="energy-fill-a" style="width:0%"></div></div>
         </div>
         <div class="hp-track"><div class="hp-fill" id="hp-fill-a" style="width:100%"></div></div>
-        <div class="hp-text"><span>你的精灵</span><span id="hp-text-a">—</span></div>
+        <div class="hp-text"><span>我方</span><span id="hp-text-a">—</span></div>
         <div class="buff-row" id="buff-a"></div>
       </div>
-      <div class="hp-bar-wrap" id="hpbar-b">
-        <div class="hpbar-name">
-          <span id="name-b">—</span>
+
+      <!-- HP 面板 B -->
+      <div class="hp-panel" id="hpbar-b">
+        <div class="hpbar-top">
+          <span class="hpbar-name" id="name-b">—</span>
           <span id="type-b" class="type-badge"></span>
-          <div class="energy-dots" id="energy-b"></div>
+        </div>
+        <div class="energy-bar-wrap">
+          <div class="energy-label">
+            <span>能量</span><span id="energy-text-b">0/10</span>
+          </div>
+          <div class="energy-track"><div class="energy-fill" id="energy-fill-b" style="width:0%"></div></div>
         </div>
         <div class="hp-track"><div class="hp-fill" id="hp-fill-b" style="width:100%"></div></div>
-        <div class="hp-text"><span>AI的精灵</span><span id="hp-text-b">—</span></div>
+        <div class="hp-text"><span>AI方</span><span id="hp-text-b">—</span></div>
         <div class="buff-row" id="buff-b"></div>
       </div>
 
-      <!-- MP -->
+      <!-- MP 宝石 -->
       <div class="mp-wrap" id="mp-a"></div>
       <div class="mp-wrap" id="mp-b"></div>
 
@@ -299,20 +406,17 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-dark);color
       <div class="shield-overlay" id="shield-a"></div>
       <div class="shield-overlay" id="shield-b"></div>
 
-      <!-- 精灵 -->
-      <div class="poke-shadow" id="shadow-a"></div>
+      <!-- 精灵 A -->
       <div class="poke-slot" id="slot-a">
-        <div id="sprite-a" class="sprite">
-          <div class="sprite-ring"></div>🐾
-        </div>
+        <div id="sprite-a"></div>
+        <div class="sprite-glow"></div>
         <span class="sprite-label" id="label-a">—</span>
       </div>
 
-      <div class="poke-shadow" id="shadow-b"></div>
+      <!-- 精灵 B -->
       <div class="poke-slot" id="slot-b">
-        <div id="sprite-b" class="sprite">
-          <div class="sprite-ring"></div>🐾
-        </div>
+        <div id="sprite-b"></div>
+        <div class="sprite-glow"></div>
         <span class="sprite-label" id="label-b">—</span>
       </div>
     </div>
@@ -336,7 +440,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-dark);color
         <h2>⚔️ 洛克王国战斗模拟器</h2>
         <p id="start-desc">你将控制<b>毒队</b>对抗 AI 控制的<b>翼王队</b><br>选择技能、聚能或换人，击败对手！</p>
         <button class="start-btn" onclick="startBattle()">开始战斗</button>
-        <a href="/team" style="font-size:11px;color:var(--dim);text-decoration:underline;cursor:pointer">← 返回阵容搭配</a>
+        <a href="/team" style="font-size:11px;color:var(--dim);text-decoration:none;opacity:.7">← 返回阵容搭配</a>
       </div>
 
       <!-- 战斗 UI -->
@@ -346,7 +450,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-dark);color
         <div id="util-row">
           <button class="util-btn" id="btn-charge" onclick="doCharge()">
             <span class="icon">⚡</span>汇合聚能
-            <span style="font-size:9px;color:var(--dim);margin-left:auto">+5能</span>
+            <span style="font-size:9px;color:var(--dim);margin-left:auto">+5能量</span>
           </button>
           <button class="util-btn" id="btn-switch-toggle" onclick="toggleSwitch()">
             <span class="icon">🔄</span>换人
@@ -393,15 +497,39 @@ const TYPE_CLASS = {
   grass:'t-grass',ice:'t-ice',fighting:'t-fighting',poison:'t-poison',
   ground:'t-ground',flying:'t-flying',psychic:'t-psychic',bug:'t-bug',
   rock:'t-rock',ghost:'t-ghost',dragon:'t-dragon',dark:'t-dark',
-  steel:'t-steel',fairy:'t-fairy',
+  steel:'t-steel',fairy:'t-fairy',light:'t-light',
 };
 const TYPE_ZH = {
   normal:'普通',fire:'火',water:'水',electric:'电',grass:'草',ice:'冰',
   fighting:'武',poison:'毒',ground:'地',flying:'翼',psychic:'幻',
-  bug:'虫',rock:'岩',ghost:'幽',dragon:'龙',dark:'恶',steel:'机械',fairy:'萌',
+  bug:'虫',rock:'岩',ghost:'幽',dragon:'龙',dark:'恶',steel:'机械',fairy:'萌',light:'光',
 };
-const CAT_ZH = {'物攻':'物','魔攻':'魔','防御':'防','状态':'变'};
+const CAT_ZH = {'物攻':'物','魔攻':'魔','防御':'防','状态':'变','物理':'物','魔法':'魔','变化':'变'};
+
 function emoji(name){ return SPRITE_EMOJIS[name] || '🐾'; }
+
+function makeSpriteEl(p, side) {
+  // 优先图片，无图时 emoji 降级
+  if(p.icon_url) {
+    const img = document.createElement('img');
+    img.className = 'sprite-img';
+    img.src = p.icon_url;
+    img.alt = p.name;
+    img.onerror = () => {
+      // 加载失败时用 emoji
+      const wrap = document.createElement('div');
+      wrap.className = 'sprite-emoji';
+      wrap.textContent = emoji(p.name);
+      img.replaceWith(wrap);
+    };
+    return img;
+  } else {
+    const wrap = document.createElement('div');
+    wrap.className = 'sprite-emoji';
+    wrap.textContent = emoji(p.name);
+    return wrap;
+  }
+}
 
 // ══════════════════════════════
 // 状态
@@ -410,7 +538,7 @@ let ws = null;
 let state = null;
 let myTurn = false;
 let showSwitch = false;
-let logCount = 0;   // 已渲染的日志条数（用于增量追加）
+let logCount = 0;
 
 // ══════════════════════════════
 // WebSocket
@@ -441,12 +569,8 @@ function onMsg(msg){
       if(msg.logs) appendLogs(msg.logs);
       if(msg.events && msg.events.length) playEvents(msg.events);
       if(msg.game_over) showGameOver(msg.winner);
-      // BUG #3 FIX: Explicitly handle force_switch_prompt state
-      // When backend sends force_switch_prompt=true, we should NOT set myTurn to false
-      // This is already done in renderState(), but let's make it explicit here
       if(msg.force_switch_prompt && !msg.game_over){
-        // Force switch prompt is active - renderState() will handle UI
-        console.log('[DEBUG] Force switch prompt received, waiting for player choice');
+        console.log('[DEBUG] Force switch prompt received');
       }
       break;
     case 'your_turn':
@@ -461,11 +585,9 @@ function onMsg(msg){
       setWait(true,'AI思考中…');
       break;
     case 'reset_ok': location.reload(); break;
-    case 'error': 
-      // BUG #3 FIX: Ensure error message doesn't leave UI in stuck state
+    case 'error':
       addLogLine('⚠️ '+msg.message,'');
-      // After an error, backend should recover and send 'your_turn', but let's be safe
-      console.log('[DEBUG] Error received, waiting for backend recovery');
+      console.log('[DEBUG] Error received');
       break;
   }
 }
@@ -481,49 +603,47 @@ function renderState(s){
   document.getElementById('turn-info').textContent=`回合 ${s.turn}`;
   renderStrip('strip-a',s.team_a,s.current_a);
   renderStrip('strip-b',s.team_b,s.current_b);
-  
-  // BUG #3 FIX: Improved state management for force_switch_prompt
+
   if(s.force_switch_prompt && !s.game_over){
-    // 强制换人属于玩家输入阶段，必须清掉上一帧 AI 思考遮罩，否则会盖住换人面板
-    console.log('[DEBUG] Rendering force switch prompt - clearing AI thinking mask');
     myTurn=true;
     setWait(false);
     enableActions(false);
-    renderSkills(null, null); // 清空技能区
+    renderSkills(null, null);
     renderForceSwitchPanel(s.team_a, s.current_a, pb);
   } else if(s.waiting_for_player && !s.game_over){
-    console.log('[DEBUG] Rendering normal player turn');
     myTurn=true;
     setWait(false);
     renderSkills(pa, pb);
     renderSwitchPanel(s.team_a, s.current_a, pb);
   } else if(s.game_over){
-    // Game is over, don't enable actions
-    console.log('[DEBUG] Game over, disabling actions');
     myTurn=false;
     setWait(false);
   }
 }
 
 function updateHpBar(side,p){
-  const fill=document.getElementById(`hp-fill-${side}`);
-  const txt =document.getElementById(`hp-text-${side}`);
-  const name=document.getElementById(`name-${side}`);
-  const tb  =document.getElementById(`type-${side}`);
-  const ec  =document.getElementById(`energy-${side}`);
-  const pct =p.hp>0?p.current_hp/p.hp*100:0;
-  fill.style.width=pct+'%';
-  fill.style.background=pct>50?'var(--hp-g)':pct>20?'var(--hp-y)':'var(--hp-r)';
-  txt.textContent=`${p.current_hp}/${p.hp}`;
-  name.textContent=p.name;
-  tb.className=`type-badge ${TYPE_CLASS[p.type]||''}`;
-  tb.textContent=TYPE_ZH[p.type]||p.type;
-  ec.innerHTML='';
-  for(let i=0;i<10;i++){
-    const d=document.createElement('div');
-    d.className='e-dot'+(i<p.energy?' on':'');
-    ec.appendChild(d);
-  }
+  const fill   = document.getElementById(`hp-fill-${side}`);
+  const txt    = document.getElementById(`hp-text-${side}`);
+  const name   = document.getElementById(`name-${side}`);
+  const tb     = document.getElementById(`type-${side}`);
+  const eFill  = document.getElementById(`energy-fill-${side}`);
+  const eTxt   = document.getElementById(`energy-text-${side}`);
+  const pct    = p.hp>0 ? p.current_hp/p.hp*100 : 0;
+
+  fill.style.width = pct+'%';
+  const hpColor = pct>50 ? 'var(--hp-g)' : pct>20 ? 'var(--hp-y)' : 'var(--hp-r)';
+  fill.style.background = hpColor;
+  fill.style.boxShadow  = `0 0 8px ${hpColor}`;
+  txt.textContent = `${p.current_hp}/${p.hp}`;
+  name.textContent = p.name;
+  tb.className = `type-badge ${TYPE_CLASS[p.type]||''}`;
+  tb.textContent = TYPE_ZH[p.type]||p.type;
+
+  // 能量条
+  const ePct = Math.min(100, p.energy/10*100);
+  eFill.style.width = ePct+'%';
+  eTxt.textContent = `${p.energy}/10`;
+
   renderBuffRow(side, p);
 }
 
@@ -538,7 +658,6 @@ function renderBuffRow(side, p){
     el.appendChild(s);
   };
 
-  // 属性 buff/debuff（分别显示，只展示非零项）
   const stats = [
     ['物攻', p.atk_up, p.atk_down],
     ['物防', p.def_up, p.def_down],
@@ -551,14 +670,13 @@ function renderBuffRow(side, p){
     if(down && down > 0) tag(`${label}-${down}%`, 'buff-down');
   });
 
-  // 状态异常
   if(p.poison_stacks > 0)    tag(`中毒×${p.poison_stacks}`, 'buff-status');
   if(p.burn_stacks > 0)      tag(`灼烧×${p.burn_stacks}`, 'buff-status');
   if(p.frostbite_damage > 0) tag(`冻伤`, 'buff-status');
   if(p.leech_stacks > 0)     tag(`寄生×${p.leech_stacks}`, 'buff-status');
   if(p.meteor_stacks > 0)    tag(`星陨×${p.meteor_stacks}(${p.meteor_countdown})`, 'buff-status');
+  if(p.cute_stacks > 0)      tag(`萌化×${p.cute_stacks}`, 'buff-cute');
 
-  // 特性状态
   if(p.ability_info && p.ability_info.length > 0){
     p.ability_info.forEach(info => tag(info, 'buff-ability'));
   }
@@ -569,17 +687,25 @@ function renderMp(id,cur,max){
   el.innerHTML='';
   for(let i=0;i<max;i++){
     const d=document.createElement('div');
-    d.className='mp-dot'+(i>=cur?' lost':'');
+    d.className='mp-gem'+(i>=cur?' lost':'');
     el.appendChild(d);
   }
 }
 
 function updateSprite(side,p){
-  const sp =document.getElementById(`sprite-${side}`);
-  const lbl=document.getElementById(`label-${side}`);
-  sp.innerHTML=`<div class="sprite-ring"></div>${emoji(p.name)}`;
-  lbl.textContent=p.name;
-  sp.style.opacity=p.is_fainted?'0.15':'1';
+  const container = document.getElementById(`sprite-${side}`);
+  const lbl       = document.getElementById(`label-${side}`);
+
+  // 清空并重建精灵图元素
+  container.innerHTML = '';
+  const el = makeSpriteEl(p, side);
+  container.appendChild(el);
+
+  // 倒地透明
+  const opacity = p.is_fainted ? '0.12' : '1';
+  el.style.opacity = opacity;
+
+  lbl.textContent = p.name;
 }
 
 function renderStrip(id,team,cur){
@@ -591,7 +717,18 @@ function renderStrip(id,team,cur){
     d.title=p.name;
     const pct=p.hp>0?p.current_hp/p.hp*100:0;
     const col=pct>50?'var(--hp-g)':pct>20?'var(--hp-y)':'var(--hp-r)';
-    d.innerHTML=`${emoji(p.name)}<div class="mini-hp-wrap"><div class="mini-hp-fill" style="width:${pct}%;background:${col}"></div></div>`;
+
+    if(p.icon_url){
+      const img=document.createElement('img');
+      img.src=p.icon_url; img.alt=p.name;
+      img.onerror=()=>{ img.replaceWith(Object.assign(document.createElement('span'),{className:'mini-emoji',textContent:emoji(p.name)})); };
+      d.appendChild(img);
+    } else {
+      const sp=document.createElement('span');
+      sp.className='mini-emoji'; sp.textContent=emoji(p.name);
+      d.appendChild(sp);
+    }
+    d.insertAdjacentHTML('beforeend',`<div class="mini-hp-wrap"><div class="mini-hp-fill" style="width:${pct}%;background:${col}"></div></div>`);
     el.appendChild(d);
   });
 }
@@ -607,10 +744,6 @@ function renderSkills(pa, pb){
     const btn=document.createElement('button');
     btn.className='skill-btn'+(s.on_cooldown?' cd-btn':'');
     btn.disabled=!s.can_use;
-
-    // 克制计算（当前技能对敌方当前精灵）
-    let advHtml='';
-    // 无需重新计算，前端只显示技能类型标签
 
     const tc=TYPE_CLASS[s.type]||'';
     const normalTags = s.tags.filter(t=>!t.startsWith('['));
@@ -636,8 +769,31 @@ function renderSkills(pa, pb){
 }
 
 // ══════════════════════════════
-// 换人面板（含克制提示）
+// 换人面板（含图片）
 // ══════════════════════════════
+function _swCardHtml(p, i, isForce){
+  const tc=TYPE_CLASS[p.type]||'';
+  const pct=p.hp>0?(p.current_hp/p.hp*100).toFixed(0):0;
+  const adv = p.type_advantage || 1.0;
+  let advHtml='';
+  if(adv>=2.0)      advHtml=`<span class="adv-badge adv-super">克制×${adv}</span>`;
+  else if(adv<=0.5) advHtml=`<span class="adv-badge adv-weak">被克×${adv}</span>`;
+  else              advHtml=`<span class="adv-badge adv-norm">普通</span>`;
+
+  const iconHtml = p.icon_url
+    ? `<div class="sw-icon-wrap"><img src="${p.icon_url}" alt="${p.name}" onerror="this.parentNode.innerHTML='<span class=\\'sw-icon\\'>${emoji(p.name)}</span>'"></div>`
+    : `<div class="sw-icon-wrap"><span class="sw-icon">${emoji(p.name)}</span></div>`;
+
+  return `
+    ${iconHtml}
+    <div class="sw-info">
+      <div class="sw-name">${p.name}</div>
+      <div class="sw-hp">HP ${p.current_hp}/${p.hp}(${pct}%) ⚡${p.energy}</div>
+    </div>
+    <span class="type-badge ${tc}" style="font-size:8px">${TYPE_ZH[p.type]||p.type}</span>
+    ${advHtml}`;
+}
+
 function renderSwitchPanel(teamA, curIdx, enemyPoke){
   const panel=document.getElementById('switch-panel');
   panel.innerHTML='';
@@ -649,24 +805,7 @@ function renderSwitchPanel(teamA, curIdx, enemyPoke){
     if(i===curIdx||p.is_fainted) return;
     const card=document.createElement('button');
     card.className='sw-card';
-    const tc=TYPE_CLASS[p.type]||'';
-    const pct=p.hp>0?(p.current_hp/p.hp*100).toFixed(0):0;
-
-    // 克制提示
-    const adv = p.type_advantage || 1.0;
-    let advHtml='';
-    if(adv>=2.0)      advHtml=`<span class="adv-badge adv-super">克制×${adv}</span>`;
-    else if(adv<=0.5) advHtml=`<span class="adv-badge adv-weak">被克×${adv}</span>`;
-    else              advHtml=`<span class="adv-badge adv-norm">普通</span>`;
-
-    card.innerHTML=`
-      <span class="sw-icon">${emoji(p.name)}</span>
-      <div class="sw-info">
-        <div class="sw-name">${p.name}</div>
-        <div class="sw-hp">HP ${p.current_hp}/${p.hp}(${pct}%) E=${p.energy}</div>
-      </div>
-      <span class="type-badge ${tc}" style="font-size:8px">${TYPE_ZH[p.type]||p.type}</span>
-      ${advHtml}`;
+    card.innerHTML=_swCardHtml(p, i, false);
     card.onclick=()=>doSwitch(i);
     panel.appendChild(card);
   });
@@ -678,11 +817,7 @@ function renderSwitchPanel(teamA, curIdx, enemyPoke){
   panel.appendChild(back);
 }
 
-// ══════════════════════════════
-// 强制换人面板（应对脱离，无返回按钮）
-// ══════════════════════════════
 function renderForceSwitchPanel(teamA, curIdx, enemyPoke){
-  // 隐藏技能区，强制展示换人
   document.getElementById('switch-panel').classList.add('open');
   const panel=document.getElementById('switch-panel');
   panel.innerHTML='';
@@ -696,36 +831,18 @@ function renderForceSwitchPanel(teamA, curIdx, enemyPoke){
     if(i===curIdx || p.is_fainted) return;
     const card=document.createElement('button');
     card.className='sw-card';
-    const tc=TYPE_CLASS[p.type]||'';
-    const pct=p.hp>0?(p.current_hp/p.hp*100).toFixed(0):0;
-    const adv = p.type_advantage || 1.0;
-    let advHtml='';
-    if(adv>=2.0)      advHtml=`<span class="adv-badge adv-super">克制×${adv}</span>`;
-    else if(adv<=0.5) advHtml=`<span class="adv-badge adv-weak">被克×${adv}</span>`;
-    else              advHtml=`<span class="adv-badge adv-norm">普通</span>`;
-    card.innerHTML=`
-      <span class="sw-icon">${emoji(p.name)}</span>
-      <div class="sw-info">
-        <div class="sw-name">${p.name}</div>
-        <div class="sw-hp">HP ${p.current_hp}/${p.hp}(${pct}%) E=${p.energy}</div>
-      </div>
-      <span class="type-badge ${tc}" style="font-size:8px">${TYPE_ZH[p.type]||p.type}</span>
-      ${advHtml}`;
+    card.innerHTML=_swCardHtml(p, i, true);
     card.onclick=()=>doForceSwitch(i);
     panel.appendChild(card);
   });
 }
 
 function doForceSwitch(idx){
-  // BUG #3 FIX: Add feedback and ensure message is sent properly
-  if(!myTurn) return; // Safety check
-  console.log(`[DEBUG] Player selecting forced switch to pokemon ${idx}`);
+  if(!myTurn) return;
   myTurn=false;
   enableActions(false);
   setWait(true,'换人中…');
-  // Send with exact format expected by backend
   send({type:'switch', index:idx});
-  console.log('[DEBUG] Forced switch message sent, waiting for backend response');
 }
 
 // ══════════════════════════════
@@ -768,7 +885,6 @@ function startBattle(){
   logCount=0;
   clearLog();
 
-  // 从 sessionStorage 读取自定义阵容（由阵容搭配器写入）
   const playerTeamRaw = sessionStorage.getItem('playerTeam');
   const aiTeam = sessionStorage.getItem('aiTeam') || 'wing';
 
@@ -776,7 +892,6 @@ function startBattle(){
     const playerTeam = JSON.parse(playerTeamRaw);
     send({ cmd: 'start_custom', player_team: playerTeam, ai_team: aiTeam });
   } else {
-    // 没有自定义阵容，使用默认毒队 vs 翼王队
     send({ cmd: 'start' });
   }
 }
@@ -799,23 +914,25 @@ function playEvents(events){
 function playHit(side, dmg){
   const atkSide = side==='a'?'b':'a';
   const atkSlot = document.getElementById(`slot-${atkSide}`);
-  const sprite  = document.getElementById(`sprite-${side}`);
+  const spriteEl = document.getElementById(`sprite-${side}`).querySelector('img,.sprite-emoji');
+
   atkSlot.classList.add(`slot-atk-${atkSide}`);
-  setTimeout(()=>atkSlot.classList.remove(`slot-atk-a`,`slot-atk-b`),430);
-  sprite.classList.add('sprite-hit');
-  setTimeout(()=>sprite.classList.remove('sprite-hit'),460);
+  setTimeout(()=>atkSlot.classList.remove('slot-atk-a','slot-atk-b'),450);
+
+  if(spriteEl){ spriteEl.classList.add('sprite-hit'); setTimeout(()=>spriteEl.classList.remove('sprite-hit'),510); }
+
   if(dmg>0){
     const arena=document.getElementById('arena');
     const slot =document.getElementById(`slot-${side}`);
     const fl   =document.createElement('div');
     fl.className='float-dmg';
     fl.textContent=`-${dmg}`;
-    fl.style.color=side==='a'?'var(--red)':'var(--orange)';
+    fl.style.color=side==='a'?'#fca5a5':'#fb923c';
     const sr=slot.getBoundingClientRect(), ar=arena.getBoundingClientRect();
-    fl.style.left=(sr.left-ar.left+sr.width/2-14)+'px';
-    fl.style.top =(sr.top -ar.top+8)+'px';
+    fl.style.left=(sr.left-ar.left+sr.width/2-18)+'px';
+    fl.style.top =(sr.top -ar.top+10)+'px';
     arena.appendChild(fl);
-    setTimeout(()=>fl.remove(),870);
+    setTimeout(()=>fl.remove(),920);
   }
 }
 
@@ -830,9 +947,8 @@ function playShield(side){
 }
 
 function playFaint(side){
-  const sprite=document.getElementById(`sprite-${side}`);
-  sprite.classList.add('sprite-faint');
-  setTimeout(()=>sprite.classList.remove('sprite-faint'),580);
+  const spriteEl = document.getElementById(`sprite-${side}`).querySelector('img,.sprite-emoji');
+  if(spriteEl){ spriteEl.classList.add('sprite-faint'); setTimeout(()=>spriteEl.classList.remove('sprite-faint'),620); }
 }
 
 // ══════════════════════════════
@@ -843,12 +959,8 @@ function enableActions(on){
     const b=document.getElementById(id);
     if(b) b.disabled=!on;
   });
-  document.querySelectorAll('.skill-btn').forEach(b=>{
-    if(!on) b.disabled=true;
-  });
-  document.querySelectorAll('.sw-card').forEach(b=>{
-    if(!on) b.disabled=true;
-  });
+  document.querySelectorAll('.skill-btn').forEach(b=>{if(!on) b.disabled=true;});
+  document.querySelectorAll('.sw-card').forEach(b=>{if(!on) b.disabled=true;});
 }
 function setWait(show,text=''){
   document.getElementById('wait-mask').classList.toggle('show',show);
@@ -864,7 +976,7 @@ function showGameOver(winner){
 }
 
 // ══════════════════════════════
-// 战报日志（增量追加，不重复）
+// 战报日志（增量追加）
 // ══════════════════════════════
 function appendLogs(lines){
   if(!lines||lines.length===0) return;
@@ -878,8 +990,7 @@ function addLogLine(text){
   const el =document.createElement('div');
 
   if(!text){
-    el.className='log-sep';
-    el.textContent='';
+    el.className='log-sep'; el.textContent='';
   } else if(text.startsWith('═')||text.startsWith('─')){
     el.className='log-sep'; el.textContent=text;
   } else if(text.includes('你赢了')||text.includes('胜利')){
@@ -892,6 +1003,8 @@ function addLogLine(text){
     el.className='log-line log-heal'; el.textContent=text;
   } else if(text.includes('中毒')||text.includes('燃烧')||text.includes('寄生')||text.includes('星陨')||text.includes('冻伤')){
     el.className='log-line log-status'; el.textContent=text;
+  } else if(text.includes('萌化')){
+    el.className='log-line log-cute'; el.textContent=text;
   } else if(text.includes('MP')||text.includes('💔')){
     el.className='log-line log-mp'; el.textContent=text;
   } else {
@@ -910,7 +1023,6 @@ function clearLog(){
 // ══════════════════════════════
 // 启动
 // ══════════════════════════════
-// 检查自定义阵容
 (function checkTeam(){
   const raw = sessionStorage.getItem('playerTeam');
   const ai  = sessionStorage.getItem('aiTeam') || 'wing';

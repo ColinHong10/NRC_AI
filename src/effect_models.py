@@ -277,6 +277,24 @@ class E(Enum):
     CONTRACT_ENTRY = auto()              # 契约的形状: 入场时根据咕噜球类型触发效果  params: {"ball": "绝缘球"}
     BLOODLINE_ENTRY = auto()             # 稀兽花宝: 入场时根据系别触发效果  params: {"element": "萌"}
 
+    # ── 萌化子系统 ──
+    # 萌化是叠层状态(cute_stacks)，解锁条件性效果，换人不清除。
+    CUTE_GAIN = auto()               # 自己获得N层萌化  params: {"stacks": 1}
+    CUTE_ENEMY_GAIN = auto()         # 敌方获得N层萌化  params: {"stacks": 1}
+    CUTE_ALL_BENCH = auto()          # 场下所有精灵获得萌化  params: {"stacks": 1}
+    CUTE_BOTH = auto()               # 自己和敌方各获得N层萌化  params: {"stacks": 1}
+    CUTE_TRANSFER = auto()           # 将自身萌化全部转移给敌方  params: {}
+    CUTE_CLEAR_SELF = auto()         # 解除自身萌化（配合逆向演化转移）  params: {}
+    CUTE_IF_POWER_BONUS = auto()     # 自己有萌化时威力+N  params: {"bonus": 60}
+    CUTE_ON_GAIN_POWER_PERM = auto() # 获得萌化后威力永久+N  params: {"delta": 20}
+    CUTE_ON_GAIN_COST_REDUCE = auto()# 获得萌化后全技能能耗永久-N  params: {"reduce": 4}
+    CUTE_ON_GAIN_SPEED_PERM = auto() # 获得萌化后速度永久+N  params: {"speed": 150}
+    CUTE_TEAM_POWER = auto()         # 双方全队萌化总层数 × 连击数  params: {}
+    CUTE_LETHAL_SHIELD = auto()      # 特性: 受致命伤时+1萌化并免死  params: {}
+    CUTE_NO_CAP = auto()             # 特性: 萌化层数无上限  params: {}
+    CUTE_HIT_PER_STACK = auto()      # 特性: 自己每有1层萌化连击+N  params: {"per": 2}
+    CUTE_BENCH_COST_REDUCE = auto()  # 特性: 友方场下每有1层萌化入场时能耗-1  params: {}
+
 
 # ============================================================
 # 触发时机枚举 (用于特性)

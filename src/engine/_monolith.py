@@ -428,6 +428,13 @@ def _h_damage(tag: EffectTag, ctx: Ctx) -> None:
             if skill.category in (_SC.PHYSICAL, _SC.MAGICAL) and ctx.target.poison_stacks > 0:
                 hit_count += ctx.target.poison_stacks
 
+        # ── 自由飘: 自己每有1层萌化，连击+N (仅攻击技能) ──
+        cute_per = ctx.user.ability_state.get("cute_hit_per_stack")
+        if cute_per and ctx.user.cute_stacks > 0:
+            from src.models import SkillCategory as _SC2
+            if skill.category in (_SC2.PHYSICAL, _SC2.MAGICAL):
+                hit_count += ctx.user.cute_stacks * cute_per
+
         # ── 噼啪！: 入场首次行动使用次数+1 ──
         if ctx.user.ability_state.get("first_action_bonus"):
             hit_count += 1
@@ -2691,6 +2698,157 @@ def _h_bloodline_entry(tag: EffectTag, ctx: Ctx) -> None:
         ctx.target.spatk_down += 0.6
 
 
+def _cute_max_stacks(pokemon: "Pokemon") -> int:
+    """萌化层数上限（默认3层，特性'无忧无虑'无上限用999）"""
+    if pokemon.ability_state.get("cute_no_cap"):
+        return 999
+    return 3
+
+
+def _cute_add(pokemon: "Pokemon", stacks: int) -> int:
+    """给精灵增加萌化层数，返回实际增加量。"""
+    cap = _cute_max_stacks(pokemon)
+    before = pokemon.cute_stacks
+    pokemon.cute_stacks = min(cap, pokemon.cute_stacks + stacks)
+    return pokemon.cute_stacks - before
+
+
+# ── 萌化 handlers ──
+
+def _h_cute_gain(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_GAIN: 自己获得N层萌化"""
+    stacks = tag.params.get("stacks", 1)
+    added = _cute_add(ctx.user, stacks)
+    if added > 0:
+        ctx.result.setdefault("log", []).append(f"{ctx.user.name} 获得{added}层萌化（共{ctx.user.cute_stacks}层）")
+
+
+def _h_cute_enemy_gain(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_ENEMY_GAIN: 敌方获得N层萌化"""
+    stacks = tag.params.get("stacks", 1)
+    added = _cute_add(ctx.target, stacks)
+    if added > 0:
+        ctx.result.setdefault("log", []).append(f"{ctx.target.name} 获得{added}层萌化（共{ctx.target.cute_stacks}层）")
+
+
+def _h_cute_all_bench(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_ALL_BENCH: 场下所有精灵获得萌化（赤子之心/玩具乐园）"""
+    stacks = tag.params.get("stacks", 1)
+    team = getattr(ctx, "team", "a")
+    state = ctx.state
+    bench = state.team_a if team == "a" else state.team_b
+    for poke in bench:
+        if not poke.is_fainted and poke is not ctx.user:
+            _cute_add(poke, stacks)
+    # 在场精灵也获得
+    _cute_add(ctx.user, stacks)
+
+
+def _h_cute_both(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_BOTH: 自己和敌方各获得N层萌化（甜心续航）"""
+    stacks = tag.params.get("stacks", 1)
+    _cute_add(ctx.user, stacks)
+    _cute_add(ctx.target, stacks)
+
+
+def _h_cute_transfer(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_TRANSFER: 将自身萌化全部转移给敌方（反弹）"""
+    n = ctx.user.cute_stacks
+    if n <= 0:
+        return
+    ctx.user.cute_stacks = 0
+    _cute_add(ctx.target, n)
+    ctx.result.setdefault("log", []).append(f"{ctx.user.name} 将{n}层萌化转移给{ctx.target.name}")
+
+
+def _h_cute_clear_self(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_CLEAR_SELF: 解除自身萌化（逆向演化第一步）"""
+    ctx.result["_cute_cleared"] = ctx.user.cute_stacks
+    ctx.user.cute_stacks = 0
+
+
+def _h_cute_if_power_bonus(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_IF_POWER_BONUS: 自己有萌化时本次技能威力+N（幼态延续/超级糖果）"""
+    if ctx.user.cute_stacks > 0:
+        bonus = tag.params.get("bonus", 60)
+        ctx.result["_power_bonus"] = ctx.result.get("_power_bonus", 0) + bonus
+
+
+def _h_cute_on_gain_power_perm(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_ON_GAIN_POWER_PERM: 获得萌化后威力永久+N（撒娇）"""
+    stacks = tag.params.get("stacks", 1)
+    added = _cute_add(ctx.user, stacks)
+    if added > 0:
+        delta = tag.params.get("delta", 20)
+        for s in ctx.user.skills:
+            if s.name == (ctx.skill.name if ctx.skill else ""):
+                s.power = max(0, s.power + delta)
+                break
+
+
+def _h_cute_on_gain_cost_reduce(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_ON_GAIN_COST_REDUCE: 获得萌化后全技能能耗永久-N（生日蛋糕）"""
+    stacks = tag.params.get("stacks", 1)
+    added = _cute_add(ctx.user, stacks)
+    if added > 0:
+        reduce = tag.params.get("reduce", 4)
+        for s in ctx.user.skills:
+            s.energy_cost = max(0, s.energy_cost - reduce)
+
+
+def _h_cute_on_gain_speed_perm(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_ON_GAIN_SPEED_PERM: 获得萌化后速度永久+N（示弱）"""
+    stacks = tag.params.get("stacks", 1)
+    added = _cute_add(ctx.user, stacks)
+    if added > 0:
+        speed_bonus = tag.params.get("speed", 150)
+        ctx.user.speed = ctx.user.speed + speed_bonus
+
+
+def _h_cute_team_power(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_TEAM_POWER: 双方全队萌化总层数决定连击数（月光合奏）"""
+    state = ctx.state
+    team_a = state.team_a
+    team_b = state.team_b
+    total = sum(p.cute_stacks for p in team_a + team_b)
+    if total > 0:
+        ctx.skill.hit_count = max(1, ctx.skill.hit_count + total)
+
+
+def _h_cute_lethal_shield(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_LETHAL_SHIELD: 受致命伤时+1萌化并免死（化茧特性 ON_TAKE_HIT）"""
+    # 由特性 ON_TAKE_HIT 触发，检查是否会被致命一击
+    dmg = ctx.result.get("damage", 0)
+    if dmg >= ctx.user.current_hp and not ctx.user.is_fainted:
+        _cute_add(ctx.user, 1)
+        ctx.user.current_hp = 1  # 免死保留1点
+        ctx.result["blocked_lethal"] = True
+        ctx.result.setdefault("log", []).append(f"{ctx.user.name} 化茧！获得1层萌化，免疫致命伤")
+
+
+def _h_cute_no_cap(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_NO_CAP: 萌化层数无上限（无忧无虑特性 PASSIVE）"""
+    ctx.user.ability_state["cute_no_cap"] = True
+
+
+def _h_cute_hit_per_stack(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_HIT_PER_STACK: 自由飘 — 自己每有1层萌化，技能连击+N（PASSIVE）
+    PASSIVE handler: 存 ability_state 中的 per 值，实际连击在 _h_damage 里计算。
+    """
+    ctx.user.ability_state["cute_hit_per_stack"] = tag.params.get("per", 2)
+
+
+def _h_cute_bench_cost_reduce(tag: EffectTag, ctx: Ctx) -> None:
+    """CUTE_BENCH_COST_REDUCE: 友方场下每有1层萌化，入场时全能耗-1（守护者特性 ON_ENTER）"""
+    state = ctx.state
+    team = getattr(ctx, "team", "a")
+    bench = state.team_a if team == "a" else state.team_b
+    total = sum(p.cute_stacks for p in bench if p is not ctx.user and not p.is_fainted)
+    if total > 0:
+        for s in ctx.user.skills:
+            s.energy_cost = max(0, s.energy_cost - total)
+
+
 _HANDLERS: Dict[E, Callable] = {
     E.DAMAGE:                   _h_damage,
     E.SELF_BUFF:                _h_self_buff,
@@ -2879,6 +3037,22 @@ _HANDLERS: Dict[E, Callable] = {
     E.SHARE_GAINS:                   _h_share_gains,
     E.CONTRACT_ENTRY:                _h_contract_entry,
     E.BLOODLINE_ENTRY:               _h_bloodline_entry,
+    # ── 萌化子系统 ──
+    E.CUTE_GAIN:                     _h_cute_gain,
+    E.CUTE_ENEMY_GAIN:               _h_cute_enemy_gain,
+    E.CUTE_ALL_BENCH:                _h_cute_all_bench,
+    E.CUTE_BOTH:                     _h_cute_both,
+    E.CUTE_TRANSFER:                 _h_cute_transfer,
+    E.CUTE_CLEAR_SELF:               _h_cute_clear_self,
+    E.CUTE_IF_POWER_BONUS:           _h_cute_if_power_bonus,
+    E.CUTE_ON_GAIN_POWER_PERM:       _h_cute_on_gain_power_perm,
+    E.CUTE_ON_GAIN_COST_REDUCE:      _h_cute_on_gain_cost_reduce,
+    E.CUTE_ON_GAIN_SPEED_PERM:       _h_cute_on_gain_speed_perm,
+    E.CUTE_TEAM_POWER:               _h_cute_team_power,
+    E.CUTE_LETHAL_SHIELD:            _h_cute_lethal_shield,
+    E.CUTE_NO_CAP:                   _h_cute_no_cap,
+    E.CUTE_HIT_PER_STACK:            _h_cute_hit_per_stack,
+    E.CUTE_BENCH_COST_REDUCE:        _h_cute_bench_cost_reduce,
 }
 
 # 特性中部分 handler 与技能略有不同，按 tag type 覆盖
@@ -3006,6 +3180,22 @@ _ABILITY_HANDLER_OVERRIDES: Dict[E, Callable] = {
     E.SHARE_GAINS:                   _h_share_gains,
     E.CONTRACT_ENTRY:                _h_contract_entry,
     E.BLOODLINE_ENTRY:               _h_bloodline_entry,
+    # ── 萌化子系统 ──
+    E.CUTE_GAIN:                     _h_cute_gain,
+    E.CUTE_ENEMY_GAIN:               _h_cute_enemy_gain,
+    E.CUTE_ALL_BENCH:                _h_cute_all_bench,
+    E.CUTE_BOTH:                     _h_cute_both,
+    E.CUTE_TRANSFER:                 _h_cute_transfer,
+    E.CUTE_CLEAR_SELF:               _h_cute_clear_self,
+    E.CUTE_IF_POWER_BONUS:           _h_cute_if_power_bonus,
+    E.CUTE_ON_GAIN_POWER_PERM:       _h_cute_on_gain_power_perm,
+    E.CUTE_ON_GAIN_COST_REDUCE:      _h_cute_on_gain_cost_reduce,
+    E.CUTE_ON_GAIN_SPEED_PERM:       _h_cute_on_gain_speed_perm,
+    E.CUTE_TEAM_POWER:               _h_cute_team_power,
+    E.CUTE_LETHAL_SHIELD:            _h_cute_lethal_shield,
+    E.CUTE_NO_CAP:                   _h_cute_no_cap,
+    E.CUTE_HIT_PER_STACK:            _h_cute_hit_per_stack,
+    E.CUTE_BENCH_COST_REDUCE:        _h_cute_bench_cost_reduce,
 }
 
 

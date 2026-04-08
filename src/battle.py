@@ -1243,15 +1243,21 @@ def _resolve_enemy_counters(state, current, enemy, skill, enemy_skill,
 
 
 def _apply_ability_damage_reduction(state, current, enemy, skill, damage, enemy_team) -> int:
-    """应用特性减伤（秩序鱿墨等），返回减伤后的伤害值。"""
+    """应用特性减伤（秩序鱿墨等），返回减伤后的伤害值。
+    同时处理化茧特性：受致命伤时+1萌化并免死（damage 降为 enemy.current_hp - 1）。
+    """
     if enemy.ability_effects and damage > 0:
         ability_ctx = {"skill": skill, "damage": damage}
         ability_result = EffectExecutor.execute_ability(
             state, enemy, current, Timing.ON_TAKE_HIT,
             enemy.ability_effects, enemy_team, ability_ctx,
         )
+        # 普通减伤（秩序鱿墨等）
         if ability_result.get("damage_reduction", 0) > 0:
             damage = int(damage * (1.0 - ability_result["damage_reduction"]))
+        # 化茧免死：handler 已将 enemy.current_hp 设为 1，此处把伤害压到 0
+        if ability_result.get("blocked_lethal"):
+            damage = 0
     return damage
 
 
@@ -1506,6 +1512,11 @@ class TeamBuilder:
                     p.ability_state["fixed_hit_count_all"] = tag.params.get("count", 2)
                 elif tag.type == E.HIT_COUNT_PER_POISON:
                     p.ability_state["hit_count_per_poison"] = True
+                # ── 萌化被动 ──
+                elif tag.type == E.CUTE_NO_CAP:
+                    p.ability_state["cute_no_cap"] = True
+                elif tag.type == E.CUTE_HIT_PER_STACK:
+                    p.ability_state["cute_hit_per_stack"] = tag.params.get("per", 2)
         return p
 
     @staticmethod

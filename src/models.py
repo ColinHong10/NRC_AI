@@ -263,6 +263,7 @@ class Pokemon:
     leech_stacks: int = 0           # 寄生层数 (每层8%/回合, 换人清除)
     meteor_stacks: int = 0          # 星陨层数 (延迟爆炸)
     meteor_countdown: int = 0       # 星陨倒计时 (>0时每回合-1, =0时引爆)
+    cute_stacks: int = 0            # 萌化层数 (可叠加, 换人不清除; 解锁条件性技能效果)
 
     # 蓄力状态
     charging_skill_idx: int = -1    # 正在蓄力的技能index (-1=没有蓄力)

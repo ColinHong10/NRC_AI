@@ -34,6 +34,9 @@ AUDIT_REPORT.md
 AUDIT_SUMMARY.txt
 analysis/
 
+# 精灵立绘图片（163MB，通过爬虫单独获取，不纳入版本控制）
+data/spirit_icons/
+
 # 爬虫日志
 scripts/scrape_log.txt
 

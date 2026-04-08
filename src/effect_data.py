@@ -699,12 +699,104 @@ SKILL_EFFECTS = {
         SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
     ],
 
-    # 萌化相关技能（待萌化系统）
-    # 生日蛋糕: 获得萌化+全能耗-4
-    # 示弱: 获得萌化+速度+150
-    # 反弹: 萌化转移给敌方
+    # 萌化相关技能（已实现）
+    # ─────────────────────────────────────────
     # 退化: 敌方获得1层萌化
-    # 逆向演化: 解除萌化→给敌方
+    "退化": [
+        SE(SkillTiming.ON_USE, [T(E.CUTE_ENEMY_GAIN, stacks=1)]),
+    ],
+
+    # 柔弱: 获得萌化，降低敌方70%物攻和物防
+    "柔弱": [
+        SE(SkillTiming.ON_USE, [
+            T(E.CUTE_GAIN, stacks=1),
+            T(E.ENEMY_DEBUFF, _params={"atk": 0.7, "def": 0.7}),
+        ]),
+    ],
+
+    # 示弱: 自己获得萌化→速度永久+150
+    "示弱": [
+        SE(SkillTiming.ON_USE, [T(E.CUTE_ON_GAIN_SPEED_PERM, stacks=1, speed=150)]),
+    ],
+
+    # 生日蛋糕: 自己获得萌化→全技能能耗永久-4
+    "生日蛋糕": [
+        SE(SkillTiming.ON_USE, [T(E.CUTE_ON_GAIN_COST_REDUCE, stacks=1, reduce=4)]),
+    ],
+
+    # 反弹: 将自己的萌化全部转移给敌方
+    "反弹": [
+        SE(SkillTiming.ON_USE, [T(E.CUTE_TRANSFER)]),
+    ],
+
+    # 逆向演化: 解除自身萌化，每层给敌方1层萌化
+    # 注：CUTE_CLEAR_SELF 先清层数并存_cute_cleared，再CUTE_ENEMY_GAIN读取
+    # 实际上 transfer 就已经完全覆盖逆向演化语义
+    "逆向演化": [
+        SE(SkillTiming.ON_USE, [T(E.CUTE_TRANSFER)]),
+    ],
+
+    # 赤子之心: 场下每个精灵获得萌化，之后回复40%生命和4能量
+    "赤子之心": [
+        SE(SkillTiming.ON_USE, [
+            T(E.CUTE_ALL_BENCH, stacks=1),
+            T(E.HEAL_HP, pct=0.4),
+            T(E.HEAL_ENERGY, amount=4),
+        ]),
+    ],
+
+    # 玩具乐园: 自身及背包里的精灵获得萌化，并提升30%攻防，速度+20
+    "玩具乐园": [
+        SE(SkillTiming.ON_USE, [
+            T(E.CUTE_ALL_BENCH, stacks=1),
+            T(E.SELF_BUFF, _params={"atk": 0.3, "def": 0.3, "spatk": 0.3, "spdef": 0.3}),
+        ]),
+    ],
+
+    # 甜心续航: 自己和敌方获得萌化，回复40%生命和4能量
+    "甜心续航": [
+        SE(SkillTiming.ON_USE, [
+            T(E.CUTE_BOTH, stacks=1),
+            T(E.HEAL_HP, pct=0.4),
+            T(E.HEAL_ENERGY, amount=4),
+        ]),
+    ],
+
+    # 超级糖果: 造成物伤，自己获得萌化：本次技能威力+60
+    "超级糖果": [
+        SE(SkillTiming.PRE_USE, [T(E.CUTE_IF_POWER_BONUS, bonus=60)]),
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE), T(E.CUTE_GAIN, stacks=1)]),
+    ],
+
+    # 捧杀（已在 generated 里有部分配置，此处覆盖为完整版）
+    # 减伤90%，应对攻击：敌方获得1层萌化
+    # 注: 减伤部分保留 generated 里的 counter_attack 子效果结构
+
+    # 撒娇: 造成魔伤3连击，获得萌化：威力永久+20
+    "撒娇": [
+        SE(SkillTiming.ON_USE, [
+            T(E.DAMAGE),
+            T(E.CUTE_ON_GAIN_POWER_PERM, stacks=1, delta=20),
+        ]),
+    ],
+
+    # 幼态延续: 造成魔伤，自身拥有萌化时威力+60
+    "幼态延续": [
+        SE(SkillTiming.PRE_USE, [T(E.CUTE_IF_POWER_BONUS, bonus=60)]),
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+    ],
+
+    # 月光合奏: 造成物伤，双方全队每有1层萌化连击+1
+    "月光合奏": [
+        SE(SkillTiming.PRE_USE, [T(E.CUTE_TEAM_POWER)]),
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE)]),
+    ],
+
+    # 捧杀: 减伤90%，应对攻击时敌方获得1层萌化
+    "捧杀": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE_REDUCTION, pct=0.9)]),
+        SE(SkillTiming.ON_COUNTER, [T(E.CUTE_ENEMY_GAIN, stacks=1)], category="attack"),
+    ],
 
     # ============================================================
     #  第四轮修复: 特殊技能完善
@@ -1662,24 +1754,24 @@ ABILITY_EFFECTS = {
 
     # === 涉及萌化系统的 ===
 
-    # 化茧 (6只): 受致命伤害时获得1层萌化+免疫伤害
+    # 化茧 (毛毛/爬爬/化蝶): 受到致命伤害时，获得1层萌化，并免疫此次伤害
     "化茧": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 萌化系统未实现，暂占位
+        AE(Timing.ON_TAKE_HIT, [T(E.CUTE_LETHAL_SHIELD)]),
     ],
 
-    # 自由飘 (3只): 每有1层萌化连击+2
+    # 自由飘 (绿翼鸟/魔翼鸟/魔眷鸟): 自己每有1层萌化，获得连击数+2
     "自由飘": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 萌化系统未实现，暂占位
+        AE(Timing.PASSIVE, [T(E.CUTE_HIT_PER_STACK, per=2)]),
     ],
 
-    # 守护者 (3只): 己方每有1层萌化全技能能耗-1
+    # 守护者 (甜田螺/壳乙螺/卡洛儿): 己方其他精灵每有1层萌化，入场时全技能能耗-1
     "守护者": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 萌化系统未实现，暂占位
+        AE(Timing.ON_ENTER, [T(E.CUTE_BENCH_COST_REDUCE)]),
     ],
 
-    # 无忧无虑 (1只): 萌化层数不受限
+    # 无忧无虑 (菊花梨): 可获得的萌化层数不受限制
     "无忧无虑": [
-        AE(Timing.PASSIVE, [T(E.SELF_BUFF, atk=0)]),  # 萌化系统未实现，暂占位
+        AE(Timing.PASSIVE, [T(E.CUTE_NO_CAP)]),
     ],
 
     # === 涉及迸发系统的 ===

@@ -442,6 +442,31 @@ session = BattleSession()
 # ═══════════════════════════════════════
 # 序列化
 # ═══════════════════════════════════════
+# 精灵图标映射（名字 → /icons/NOxxx_名字.png）
+# ═══════════════════════════════════════
+_ICON_CACHE: dict = {}
+
+def _build_icon_cache():
+    global _ICON_CACHE
+    if _ICON_CACHE:
+        return
+    icons_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "spirit_icons")
+    if not os.path.exists(icons_dir):
+        return
+    import re
+    for fname in os.listdir(icons_dir):
+        m = re.match(r'(NO\d+)_(.+)\.png$', fname)
+        if m:
+            name = m.group(2)
+            # 只存第一个（原始形态优先）
+            if name not in _ICON_CACHE:
+                _ICON_CACHE[name] = f"/icons/{fname}"
+
+def _get_icon_url(name: str) -> str:
+    _build_icon_cache()
+    return _ICON_CACHE.get(name, "")
+
+# ═══════════════════════════════════════
 
 def serialize_pokemon(p, is_current=False):
     # ability_state 中有意义的 UI 字段
@@ -456,6 +481,9 @@ def serialize_pokemon(p, is_current=False):
         ability_info.append("预警加速")
     if ability_state.get("cost_invert"):
         ability_info.append("能耗反转")
+    cute = getattr(p, "cute_stacks", 0)
+    if cute > 0:
+        ability_info.append(f"萌化×{cute}")
 
     return {
         "name":            p.name,
@@ -471,6 +499,7 @@ def serialize_pokemon(p, is_current=False):
         "leech_stacks":    p.leech_stacks,
         "meteor_stacks":   p.meteor_stacks,
         "meteor_countdown":p.meteor_countdown,
+        "cute_stacks":     getattr(p, "cute_stacks", 0),
         "charging":        p.charging_skill_idx >= 0,
         # 净值（正=buff，负=debuff）
         "atk_mod":         round((p.atk_up - p.atk_down) * 100),
@@ -491,6 +520,7 @@ def serialize_pokemon(p, is_current=False):
         "speed_down":round(p.speed_down * 100),
         # 特性状态
         "ability_info": ability_info,
+        "icon_url":        _get_icon_url(p.name),
         "skills":          [serialize_skill(s, p.energy, p.cooldowns.get(i, 0))
                             for i, s in enumerate(p.skills)] if is_current else [],
     }
@@ -1225,6 +1255,10 @@ async def team_page():
 
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+ICONS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "spirit_icons")
+if os.path.exists(ICONS_DIR):
+    app.mount("/icons", StaticFiles(directory=ICONS_DIR), name="icons")
 
 if __name__ == "__main__":
     import uvicorn

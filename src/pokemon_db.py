@@ -214,6 +214,62 @@ def search_pokemon(keyword: str) -> List[Dict]:
     return [_row_to_dict(r) for r in c.fetchall()]
 
 
+def get_prev_evolution(name: str) -> Optional[str]:
+    """
+    萌化查询：返回精灵的进化链上一阶段的名称。
+    若该精灵已是起始形态（无前置进化），返回 None。
+
+    例：裘卡 → 裘力，裘力 → 裘洛，裘洛 → None
+    """
+    conn = _get_conn()
+    c = conn.cursor()
+    row = c.execute(
+        "SELECT from_name FROM evolution WHERE to_name = ? LIMIT 1",
+        (name,)
+    ).fetchone()
+    return row[0] if row else None
+
+
+def get_evolution_chain(name: str) -> List[str]:
+    """
+    返回精灵所在完整进化链（从起始形态到最终形态的列表）。
+    例：裘卡 → ['裘洛', '裘力', '裘卡']
+    若没有进化链数据，返回 [name]。
+    """
+    conn = _get_conn()
+    c = conn.cursor()
+
+    # 向上找起始形态
+    chain = [name]
+    current = name
+    visited = {name}
+    while True:
+        row = c.execute(
+            "SELECT from_name FROM evolution WHERE to_name = ? LIMIT 1",
+            (current,)
+        ).fetchone()
+        if not row or row[0] in visited:
+            break
+        current = row[0]
+        visited.add(current)
+        chain.insert(0, current)
+
+    # 从起始形态向下
+    current = chain[-1]
+    while True:
+        row = c.execute(
+            "SELECT to_name FROM evolution WHERE from_name = ? LIMIT 1",
+            (current,)
+        ).fetchone()
+        if not row or row[0] in visited:
+            break
+        current = row[0]
+        visited.add(current)
+        chain.append(current)
+
+    return chain
+
+
 def get_pokemon_skills(name: str) -> List[Dict]:
     """获取精灵可学习的所有技能"""
     conn = _get_conn()
