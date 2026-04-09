@@ -532,10 +532,15 @@ def _h_heal_hp(tag: EffectTag, ctx: Ctx) -> None:
         pct *= ctx.target.burn_stacks
     heal = int(ctx.user.hp * pct)
     if heal > 0:
-        ctx.user.current_hp = min(ctx.user.hp, ctx.user.current_hp + heal)
-        # 系统发育：将等量回复随机分配给场下精灵
-        if ctx.user.ability_state.get("share_gains"):
-            _share_heal_to_bench(ctx, heal)
+        # 伪造账单：回复变为失去（anti_heal_multiplier 由对手特性设置到本精灵上）
+        anti = ctx.user.ability_state.get("anti_heal_multiplier", 0)
+        if anti:
+            ctx.user.current_hp = max(0, ctx.user.current_hp - heal)
+        else:
+            ctx.user.current_hp = min(ctx.user.hp, ctx.user.current_hp + heal)
+            # 系统发育：将等量回复随机分配给场下精灵
+            if ctx.user.ability_state.get("share_gains"):
+                _share_heal_to_bench(ctx, heal)
 
 
 def _h_heal_energy(tag: EffectTag, ctx: Ctx) -> None:
@@ -781,7 +786,11 @@ def _h_consume_marks_heal(tag: EffectTag, ctx: Ctx) -> None:
     enemy_marks.clear()
     if total > 0:
         heal = int(ctx.user.hp * heal_pct * total)
-        ctx.user.current_hp = min(ctx.user.hp, ctx.user.current_hp + heal)
+        anti = ctx.user.ability_state.get("anti_heal_multiplier", 0)
+        if anti:
+            ctx.user.current_hp = max(0, ctx.user.current_hp - heal)
+        else:
+            ctx.user.current_hp = min(ctx.user.hp, ctx.user.current_hp + heal)
 
 
 def _h_marks_to_meteor(tag: EffectTag, ctx: Ctx) -> None:
@@ -1561,20 +1570,21 @@ def _apply_matching_skill_mods(pokemon: "Pokemon", enemy: "Pokemon", params: Dic
 
 
 def _h_transfer_mods(tag: EffectTag, ctx: Ctx) -> None:
-    """TRANSFER_MODS: 洁癖离场时保存属性修正，存入 result 供 battle.py 传递"""
-    pokemon = ctx.user
-    ctx.result["transfer_mods"] = {
-        "atk_up":     pokemon.atk_up,
-        "atk_down":   pokemon.atk_down,
-        "def_up":     pokemon.def_up,
-        "def_down":   pokemon.def_down,
-        "spatk_up":   pokemon.spatk_up,
-        "spatk_down": pokemon.spatk_down,
-        "spdef_up":   pokemon.spdef_up,
-        "spdef_down": pokemon.spdef_down,
-        "speed_up":   pokemon.speed_up,
-        "speed_down": pokemon.speed_down,
-    }
+    """TRANSFER_MODS: 洁癖离场时保存属性修正，存入 result 供 battle.py 传递。
+    从 _snapshot_mods（on_switch_out 前的快照）读取，因为 on_switch_out 已清零 buff。"""
+    snapshot = ctx.result.get("_snapshot_mods")
+    if snapshot:
+        ctx.result["transfer_mods"] = dict(snapshot)
+    else:
+        # fallback：直接从精灵读（可能已被清零）
+        pokemon = ctx.user
+        ctx.result["transfer_mods"] = {
+            "atk_up": pokemon.atk_up, "atk_down": pokemon.atk_down,
+            "def_up": pokemon.def_up, "def_down": pokemon.def_down,
+            "spatk_up": pokemon.spatk_up, "spatk_down": pokemon.spatk_down,
+            "spdef_up": pokemon.spdef_up, "spdef_down": pokemon.spdef_down,
+            "speed_up": pokemon.speed_up, "speed_down": pokemon.speed_down,
+        }
 
 
 def _h_burn_no_decay(tag: EffectTag, ctx: Ctx) -> None:
@@ -1614,7 +1624,13 @@ def _h_counter_accumulate_transform(tag: EffectTag, ctx: Ctx) -> None:
     cat_filter = tag.params.get("category_filter", "")
     if cat_filter and skill:
         from src.models import SkillCategory
-        if skill.category != SkillCategory(cat_filter):
+        cat_map = {
+            "攻击": (SkillCategory.PHYSICAL, SkillCategory.MAGICAL),
+            "防御": (SkillCategory.DEFENSE,),
+            "状态": (SkillCategory.STATUS,),
+        }
+        allowed = cat_map.get(cat_filter, ())
+        if allowed and skill.category not in allowed:
             return
     # 每回合只计数一次
     if pokemon.ability_state.get("guard_counter_turn") == ctx.state.turn:
@@ -1691,57 +1707,34 @@ def _h_counter_success_double_damage(tag: EffectTag, ctx: Ctx) -> None:
 
 
 def _h_counter_success_buff_permanent(tag: EffectTag, ctx: Ctx) -> None:
-    """COUNTER_SUCCESS_BUFF_PERMANENT: 应对成功后获得永久增益"""
-    if not ctx.user or not ctx.user.ability_state:
+    """COUNTER_SUCCESS_BUFF_PERMANENT: 应对成功后获得永久增益（指挥家）"""
+    if not ctx.user:
         return
-    
-    params = tag.params
-    if not ctx.user.ability_state.get("counter_buffs"):
-        ctx.user.ability_state["counter_buffs"] = {}
-    
-    # Merge buff params
-    if "atk" in params:
-        ctx.user.ability_state["counter_buffs"]["atk"] = params["atk"]
-    if "spatk" in params:
-        ctx.user.ability_state["counter_buffs"]["spatk"] = params["spatk"]
-    if "def" in params:
-        ctx.user.ability_state["counter_buffs"]["def"] = params["def"]
-    if "spdef" in params:
-        ctx.user.ability_state["counter_buffs"]["spdef"] = params["spdef"]
-    if "speed" in params:
-        ctx.user.ability_state["counter_buffs"]["speed"] = params["speed"]
+    _apply_buff(ctx.user, tag.params)
 
 
 def _h_counter_success_power_bonus(tag: EffectTag, ctx: Ctx) -> None:
     """COUNTER_SUCCESS_POWER_BONUS: 应对成功后威力永久+N（斗技）"""
-    if not ctx.user or not ctx.user.ability_state:
+    if not ctx.user:
         return
-    
     delta = tag.params.get("delta", 20)
-    if "power_bonus" not in ctx.user.ability_state:
-        ctx.user.ability_state["power_bonus"] = 0
-    ctx.user.ability_state["power_bonus"] += delta
+    ctx.user.skill_power_bonus += delta
 
 
 def _h_counter_success_cost_reduce(tag: EffectTag, ctx: Ctx) -> None:
-    """COUNTER_SUCCESS_COST_REDUCE: 应对成功后能耗永久-N（思维之盾）"""
-    if not ctx.user or not ctx.user.ability_state:
+    """COUNTER_SUCCESS_COST_REDUCE: 应对成功后全技能能耗永久-N（思维之盾）"""
+    if not ctx.user:
         return
-    
     delta = tag.params.get("delta", 5)
-    if "cost_reduce" not in ctx.user.ability_state:
-        ctx.user.ability_state["cost_reduce"] = 0
-    ctx.user.ability_state["cost_reduce"] += delta
+    for s in ctx.user.skills:
+        s.energy_cost = max(0, s.energy_cost - delta)
 
 
 def _h_counter_success_speed_priority(tag: EffectTag, ctx: Ctx) -> None:
     """COUNTER_SUCCESS_SPEED_PRIORITY: 应对成功后速度优先级+1（野性感官）"""
-    if not ctx.user or not ctx.user.ability_state:
+    if not ctx.user:
         return
-    
-    if "speed_priority" not in ctx.user.ability_state:
-        ctx.user.ability_state["speed_priority"] = 0
-    ctx.user.ability_state["speed_priority"] += 1
+    ctx.user.priority_stage += 1
 
 
 def _h_first_strike_power_bonus(tag: EffectTag, ctx: Ctx) -> None:
@@ -1767,11 +1760,8 @@ def _h_first_strike_hit_count(tag: EffectTag, ctx: Ctx) -> None:
 
 
 def _h_first_strike_agility(tag: EffectTag, ctx: Ctx) -> None:
-    """FIRST_STRIKE_AGILITY: 首个技能获得迅捷（起飞加速）"""
-    if not ctx.is_first:
-        return
-    
-    ctx.user.agility_tag = True
+    """FIRST_STRIKE_AGILITY: 首个技能获得迅捷（起飞加速）— ON_ENTER 时设 flag"""
+    ctx.user.ability_state["first_skill_agility"] = True
 
 
 def _h_auto_switch_on_zero_energy(tag: EffectTag, ctx: Ctx) -> None:
@@ -1795,51 +1785,51 @@ def _h_auto_switch_after_action(tag: EffectTag, ctx: Ctx) -> None:
 # ──────────────────────────────────────────────
 
 def _h_team_synergy_bug_swarm_attack(tag: EffectTag, ctx: Ctx) -> None:
-    """TEAM_SYNERGY_BUG_SWARM_ATTACK: 虫群突袭 - +15% stats per other bug"""
+    """TEAM_SYNERGY_BUG_SWARM_ATTACK: 虫群突袭 — 队伍每多1只虫系+15%攻击"""
     if not ctx.user or not ctx.state:
         return
-    # Count bugs in team (excluding self)
+    from src.models import Type
     user_team = ctx.state.team_a if ctx.team == "a" else ctx.state.team_b
     bug_count = 0
     for mon in user_team:
-        if mon and mon != ctx.user and (mon.type1 == 9 or mon.type2 == 9):  # 9 = Bug type
+        if mon and mon != ctx.user and not mon.is_fainted and mon.pokemon_type == Type.BUG:
             bug_count += 1
     bonus_pct = tag.params.get("bonus_pct", 0.15)
-    multiplier = 1.0 + (bonus_pct * bug_count)
-    if "stat_multiplier" not in ctx.result:
-        ctx.result["stat_multiplier"] = {}
-    ctx.result["stat_multiplier"]["all"] = multiplier
+    total = bonus_pct * bug_count
+    if total > 0:
+        ctx.user.atk_up += total
+        ctx.user.spatk_up += total
 
 
 def _h_team_synergy_bug_swarm_inspire(tag: EffectTag, ctx: Ctx) -> None:
-    """TEAM_SYNERGY_BUG_SWARM_INSPIRE: 虫群鼓舞 - +10% stats per other bug"""
+    """TEAM_SYNERGY_BUG_SWARM_INSPIRE: 虫群鼓舞 — 队伍每多1只虫系+10%攻击"""
     if not ctx.user or not ctx.state:
         return
-    # Count bugs in team (excluding self)
+    from src.models import Type
     user_team = ctx.state.team_a if ctx.team == "a" else ctx.state.team_b
     bug_count = 0
     for mon in user_team:
-        if mon and mon != ctx.user and (mon.type1 == 9 or mon.type2 == 9):
+        if mon and mon != ctx.user and not mon.is_fainted and mon.pokemon_type == Type.BUG:
             bug_count += 1
     bonus_pct = tag.params.get("bonus_pct", 0.1)
-    multiplier = 1.0 + (bonus_pct * bug_count)
-    if "stat_multiplier" not in ctx.result:
-        ctx.result["stat_multiplier"] = {}
-    ctx.result["stat_multiplier"]["all"] = multiplier
+    total = bonus_pct * bug_count
+    if total > 0:
+        ctx.user.atk_up += total
+        ctx.user.spatk_up += total
 
 
 def _h_team_synergy_brave_if_bugs(tag: EffectTag, ctx: Ctx) -> None:
-    """TEAM_SYNERGY_BRAVE_IF_BUGS: 壮胆 - +50% attack if bugs in team"""
+    """TEAM_SYNERGY_BRAVE_IF_BUGS: 壮胆 — 队伍有虫系时攻击+50%"""
     if not ctx.user or not ctx.state:
         return
-    # Check if any other bug in team
+    from src.models import Type
     user_team = ctx.state.team_a if ctx.team == "a" else ctx.state.team_b
-    has_bugs = any(mon and mon != ctx.user and (mon.type1 == 9 or mon.type2 == 9) for mon in user_team)
+    has_bugs = any(mon and mon != ctx.user and not mon.is_fainted and mon.pokemon_type == Type.BUG
+                   for mon in user_team)
     if has_bugs:
         bonus_pct = tag.params.get("bonus_pct", 0.5)
-        if "stat_multiplier" not in ctx.result:
-            ctx.result["stat_multiplier"] = {}
-        ctx.result["stat_multiplier"]["atk"] = 1.0 + bonus_pct
+        ctx.user.atk_up += bonus_pct
+        ctx.user.spatk_up += bonus_pct
 
 
 def _h_team_synergy_bug_kill_aff(tag: EffectTag, ctx: Ctx) -> None:
@@ -1861,17 +1851,16 @@ def _h_stat_scale_defense_per_energy(tag: EffectTag, ctx: Ctx) -> None:
 
 
 def _h_stat_scale_hits_per_hp_lost(tag: EffectTag, ctx: Ctx) -> None:
-    """STAT_SCALE_HITS_PER_HP_LOST: 嫁祸 - +2 hits per 25% HP lost"""
+    """STAT_SCALE_HITS_PER_HP_LOST: 嫁祸 — 每损失25%HP连击+2"""
     if not ctx.user:
         return
-    max_hp = ctx.user.max_hp if ctx.user.max_hp > 0 else 1
-    hp_lost_pct = (max_hp - ctx.user.hp) / max_hp
-    quarters_lost = int(hp_lost_pct * 4)  # 0-4 quarters
+    max_hp = ctx.user.hp if ctx.user.hp > 0 else 1
+    hp_lost_pct = (max_hp - ctx.user.current_hp) / max_hp
+    quarters_lost = int(hp_lost_pct * 4)  # 0-4
     hits_per_quarter = tag.params.get("hits_per_quarter", 2)
     extra_hits = quarters_lost * hits_per_quarter
-    if "hit_count_bonus" not in ctx.result:
-        ctx.result["hit_count_bonus"] = 0
-    ctx.result["hit_count_bonus"] += extra_hits
+    if extra_hits > 0:
+        ctx.user.hit_count_mod += extra_hits
 
 
 def _h_stat_scale_attack_decay(tag: EffectTag, ctx: Ctx) -> None:
@@ -2002,27 +1991,28 @@ def _h_damage_resist_same_type(tag: EffectTag, ctx: Ctx) -> None:
 # ── Healing/Sustain (2) ──
 
 def _h_heal_per_turn(tag: EffectTag, ctx: Ctx) -> None:
-    """HEAL_PER_TURN: 生长 - Recover 12% per turn"""
+    """HEAL_PER_TURN: 生长 — 设置回合结束回血比例（由 battle.py turn_end_effects 结算）"""
     if not ctx.user:
         return
     heal_pct = tag.params.get("heal_pct", 0.12)
-    heal_amount = int(ctx.user.max_hp * heal_pct)
-    ctx.user.hp = min(ctx.user.hp + heal_amount, ctx.user.max_hp)
-    if ctx.user.hp != ctx.user.max_hp:
-        ctx.logs.append(f"{ctx.user.name} recovered {heal_amount} HP (生长)")
+    ctx.user.ability_state["heal_per_turn_pct"] = heal_pct
 
 
 def _h_heal_on_grass_skill(tag: EffectTag, ctx: Ctx) -> None:
-    """HEAL_ON_GRASS_SKILL: 深层氧循环 - Recover 15% on grass skill"""
-    if not ctx.user or not ctx.skill:
+    """HEAL_ON_GRASS_SKILL: 深层氧循环 — 使用草系技能后回血"""
+    if not ctx.user or not ctx.result.get("skill"):
         return
-    from src.types import Type
-    if ctx.skill.type != Type.GRASS:
+    skill_obj = ctx.result.get("skill")
+    from src.models import Type
+    if not hasattr(skill_obj, "skill_type") or skill_obj.skill_type != Type.GRASS:
         return
     heal_pct = tag.params.get("heal_pct", 0.15)
-    heal_amount = int(ctx.user.max_hp * heal_pct)
-    ctx.user.hp = min(ctx.user.hp + heal_amount, ctx.user.max_hp)
-    ctx.logs.append(f"{ctx.user.name} recovered {heal_amount} HP via grass skill (深层氧循环)")
+    heal = int(ctx.user.hp * heal_pct)
+    anti = ctx.user.ability_state.get("anti_heal_multiplier", 0)
+    if anti:
+        ctx.user.current_hp = max(0, ctx.user.current_hp - max(1, heal))
+    else:
+        ctx.user.current_hp = min(ctx.user.hp, ctx.user.current_hp + max(1, heal))
 
 
 # ── Energy Cost Modification (1) ──
@@ -2044,51 +2034,39 @@ def _h_skill_cost_reduction_type(tag: EffectTag, ctx: Ctx) -> None:
 # ── Status Application (2) ──
 
 def _h_poison_stat_debuff(tag: EffectTag, ctx: Ctx) -> None:
-    """POISON_STAT_DEBUFF: 毒牙 - Poison = -40% spatk/spdef"""
-    if not ctx.user:
+    """POISON_STAT_DEBUFF: 毒牙 — 敌方有中毒时，降低其魔攻/魔防"""
+    if not ctx.target or ctx.target.poison_stacks <= 0:
         return
-    # Check if enemy has poison status
-    if ctx.user.status != "POISON":
-        return
-    spatk_reduction = tag.params.get("spatk_reduction", 0.4)
-    spdef_reduction = tag.params.get("spdef_reduction", 0.4)
-    if "spatk_reduction" not in ctx.result:
-        ctx.result["spatk_reduction"] = 0
-    if "spdef_reduction" not in ctx.result:
-        ctx.result["spdef_reduction"] = 0
-    ctx.result["spatk_reduction"] += spatk_reduction
-    ctx.result["spdef_reduction"] += spdef_reduction
-    ctx.logs.append(f"{ctx.user.name}'s Sp. ATK and Sp. DEF reduced by poison (毒牙)")
+    spatk_red = tag.params.get("spatk_reduction", 0.4)
+    spdef_red = tag.params.get("spdef_reduction", 0.4)
+    ctx.target.spatk_down += spatk_red
+    ctx.target.spdef_down += spdef_red
 
 
 def _h_poison_on_skill_apply(tag: EffectTag, ctx: Ctx) -> None:
-    """POISON_ON_SKILL_APPLY: 毒腺 - 4-layer poison on low-cost"""
-    if not ctx.user or not ctx.skill:
+    """POISON_ON_SKILL_APPLY: 毒腺 — 使用能耗<阈值的技能后敌方获得中毒"""
+    skill = ctx.skill or ctx.result.get("skill")
+    if not skill:
         return
-    # Apply poison if skill cost < threshold (default 5)
     cost_threshold = tag.params.get("cost_threshold", 5)
-    if ctx.skill.cost >= cost_threshold:
+    actual_cost = getattr(skill, "_base_energy_cost", skill.energy_cost)
+    if actual_cost >= cost_threshold:
         return
     poison_stacks = tag.params.get("poison_stacks", 4)
-    ctx.user.apply_status("POISON", stacks=poison_stacks)
-    ctx.logs.append(f"{ctx.user.name} was poisoned by low-cost skill (毒腺)")
+    if ctx.target:
+        ctx.target.poison_stacks += poison_stacks
 
 
 # ── Entry Effects (1) ──
 
 def _h_freeze_immunity_and_buff(tag: EffectTag, ctx: Ctx) -> None:
-    """FREEZE_IMMUNITY_AND_BUFF: 吉利丁片 - +20% defense, freeze immune"""
+    """FREEZE_IMMUNITY_AND_BUFF: 吉利丁片 — 入场双防+20% + 冻结免疫"""
     if not ctx.user:
         return
-    # Apply defense buff
     def_bonus = tag.params.get("def_bonus", 0.2)
-    if "def_buff" not in ctx.user.ability_state:
-        ctx.user.ability_state["def_buff"] = 0
-    ctx.user.ability_state["def_buff"] += def_bonus
-    # Mark as freeze immune
-    if "freeze_immune" not in ctx.user.ability_state:
-        ctx.user.ability_state["freeze_immune"] = True
-    ctx.logs.append(f"{ctx.user.name} gained +{int(def_bonus*100)}% defense and freeze immunity (吉利丁片)")
+    ctx.user.def_up += def_bonus
+    ctx.user.spdef_up += def_bonus
+    ctx.user.ability_state["freeze_immune"] = True
 
 
 # ── 通用特性 handler (批量新增) ──
@@ -2127,7 +2105,11 @@ def _h_on_skill_element_heal(tag: EffectTag, ctx: Ctx) -> None:
     """ON_SKILL_ELEMENT_HEAL: 使用某系技能后回血（氧循环）"""
     heal_pct = tag.params.get("heal_pct", 0.1)
     heal = int(ctx.user.hp * heal_pct)
-    ctx.user.current_hp = min(ctx.user.hp, ctx.user.current_hp + heal)
+    anti = ctx.user.ability_state.get("anti_heal_multiplier", 0)
+    if anti:
+        ctx.user.current_hp = max(0, ctx.user.current_hp - heal)
+    elif heal > 0:
+        ctx.user.current_hp = min(ctx.user.hp, ctx.user.current_hp + heal)
 
 
 def _h_on_skill_element_enemy_energy(tag: EffectTag, ctx: Ctx) -> None:
@@ -2184,11 +2166,10 @@ def _h_carry_element_count_buff(tag: EffectTag, ctx: Ctx) -> None:
 
 
 def _h_on_kill_buff(tag: EffectTag, ctx: Ctx) -> None:
-    """ON_KILL_BUFF: 击败敌方后获得buff（恶魔的晚宴）"""
-    if ctx.target.is_fainted:
-        buff = tag.params.get("buff", {})
-        if buff:
-            _apply_buff(ctx.user, buff)
+    """ON_KILL_BUFF: 击败敌方后获得buff（恶魔的晚宴）— ON_KILL 时机已确认击败"""
+    buff = tag.params.get("buff", {})
+    if buff and ctx.user:
+        _apply_buff(ctx.user, buff)
 
 
 def _h_recoil_damage(tag: EffectTag, ctx: Ctx) -> None:
@@ -2306,7 +2287,8 @@ def _h_energy_cost_condition_buff(tag: EffectTag, ctx: Ctx) -> None:
     cost = tag.params.get("cost", 0)
     buff = tag.params.get("buff", {})
     permanent = tag.params.get("permanent", False)
-    if ctx.skill and getattr(ctx.skill, "_base_energy_cost", ctx.skill.energy_cost) == cost:
+    skill = ctx.skill or ctx.result.get("skill")
+    if skill and getattr(skill, "_base_energy_cost", skill.energy_cost) == cost:
         if buff:
             _apply_buff(ctx.user, buff)
 
@@ -2427,14 +2409,8 @@ def _h_fixed_hit_count_all(tag: EffectTag, ctx: Ctx) -> None:
 
 
 def _h_extra_poison_tick(tag: EffectTag, ctx: Ctx) -> None:
-    """EXTRA_POISON_TICK: 复方汤剂 — 回合结束时敌方中毒额外触发1次"""
-    if ctx.target.poison_stacks > 0 and not ctx.target.is_fainted:
-        dmg = max(1, int(ctx.target.hp * 0.03 * ctx.target.poison_stacks))
-        ctx.target.current_hp -= dmg
-        if ctx.target.current_hp <= 0:
-            ctx.target.current_hp = 0
-            from src.models import StatusType
-            ctx.target.status = StatusType.FAINTED
+    """EXTRA_POISON_TICK: 复方汤剂 — 回合结束时中毒额外触发1次（写 flag，由 turn_end_effects 结算）"""
+    ctx.user.ability_state["extra_poison_tick"] = True
 
 
 def _h_conditional_entry_buff_total_cost(tag: EffectTag, ctx: Ctx) -> None:
@@ -2602,17 +2578,13 @@ def _h_cost_change_double(tag: EffectTag, ctx: Ctx) -> None:
 
 
 def _h_noise_debuff(tag: EffectTag, ctx: Ctx) -> None:
-    """NOISE_DEBUFF: 泛音列 — 使用状态技能后敌方攻击技能能耗+3持续3回合"""
-    from src.models import SkillCategory
+    """NOISE_DEBUFF: 泛音列 — 使用状态技能后敌方攻击技能能耗+N，持续N回合
+    走 temporary_skill_cost_mods 路径（filter=attack），turn_end_effects 自动递减回合数。
+    """
     cost_up = tag.params.get("cost_up", 3)
     turns = tag.params.get("turns", 3)
-    # 给敌方所有攻击技能临时能耗+cost_up
-    for s in ctx.target.skills:
-        if s.category in (SkillCategory.PHYSICAL, SkillCategory.MAGICAL):
-            s.energy_cost += cost_up
-    # 记录临时修改以便回合结束倒计时清除
     mods = ctx.target.ability_state.setdefault("temporary_skill_cost_mods", [])
-    mods.append({"type": "noise_debuff", "cost_up": cost_up, "turns": turns})
+    mods.append({"amount": cost_up, "filter": "attack", "turns": turns})
 
 
 def _h_skill_slot_lock(tag: EffectTag, ctx: Ctx) -> None:
@@ -2671,6 +2643,17 @@ def _h_burst_extend(tag: EffectTag, ctx: Ctx) -> None:
 # ── 奉献子系统 handlers ──
 
 DEVOTION_TYPES = ["假寐", "飞断", "虫茧", "捆缚", "虫群过境"]
+
+
+def _h_devotion_grant(tag: EffectTag, ctx: Ctx) -> None:
+    """DEVOTION_GRANT: 使用技能时获得指定类型的奉献1层"""
+    dtype = tag.params.get("type", "")
+    if dtype not in DEVOTION_TYPES:
+        return
+    team = ctx.team
+    devotion = ctx.state._get_devotion(team)
+    devotion[dtype] = devotion.get(dtype, 0) + 1
+
 
 def _h_devotion_grant_random(tag: EffectTag, ctx: Ctx) -> None:
     """DEVOTION_GRANT_RANDOM: 花精灵 — 回合结束随机获得1种奉献1层"""
@@ -3080,6 +3063,7 @@ _HANDLERS: Dict[E, Callable] = {
     E.BURST_ENEMY_COST_UP:           _h_burst_enemy_cost_up,
     E.BURST_ELEMENT_COST_REDUCE:     _h_burst_element_cost_reduce,
     E.BURST_EXTEND:                  _h_burst_extend,
+    E.DEVOTION_GRANT:                _h_devotion_grant,
     E.DEVOTION_GRANT_RANDOM:         _h_devotion_grant_random,
     E.DEVOTION_ON_HIT:               _h_devotion_on_hit,
     E.DRIVE_POSITION_SHIFT:          _h_drive_position_shift,
@@ -3224,6 +3208,7 @@ _ABILITY_HANDLER_OVERRIDES: Dict[E, Callable] = {
     E.BURST_ENEMY_COST_UP:           _h_burst_enemy_cost_up,
     E.BURST_ELEMENT_COST_REDUCE:     _h_burst_element_cost_reduce,
     E.BURST_EXTEND:                  _h_burst_extend,
+    E.DEVOTION_GRANT:                _h_devotion_grant,
     E.DEVOTION_GRANT_RANDOM:         _h_devotion_grant_random,
     E.DEVOTION_ON_HIT:               _h_devotion_on_hit,
     E.DRIVE_POSITION_SHIFT:          _h_drive_position_shift,
@@ -3346,7 +3331,11 @@ class EffectExecutor:
         total_drain = result.get("_life_drain_pct", 0.0) + getattr(user, "life_drain_mod", 0.0)
         if total_drain > 0 and result.get("damage", 0) > 0:
             heal = int(result["damage"] * total_drain)
-            user.current_hp = min(user.hp, user.current_hp + heal)
+            anti = getattr(user, "ability_state", {}).get("anti_heal_multiplier", 0)
+            if anti:
+                user.current_hp = max(0, user.current_hp - heal)
+            else:
+                user.current_hp = min(user.hp, user.current_hp + heal)
         for tag in post_use_tags:
             _apply_tag(tag, ctx)
         for buff in result.pop("_post_use_self_buffs", []):
@@ -3437,7 +3426,11 @@ class EffectExecutor:
         total_drain = result.get("_life_drain_pct", 0.0) + getattr(user, "life_drain_mod", 0.0)
         if total_drain > 0 and result.get("damage", 0) > 0:
             heal = int(result["damage"] * total_drain)
-            user.current_hp = min(user.hp, user.current_hp + heal)
+            anti = getattr(user, "ability_state", {}).get("anti_heal_multiplier", 0)
+            if anti:
+                user.current_hp = max(0, user.current_hp - heal)
+            else:
+                user.current_hp = min(user.hp, user.current_hp + heal)
 
         # ── 后处理 ──
         for buff in result.pop("_post_use_self_buffs", []):

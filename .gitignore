@@ -20,6 +20,7 @@ venv/
 data/nrc.db-shm
 data/nrc.db-wal
 data/crawl_progress.json
+data/nrc_battle.db
 
 # Local info (not for repo)
 信息/

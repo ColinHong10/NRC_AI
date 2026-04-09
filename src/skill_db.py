@@ -113,6 +113,11 @@ def load_skills(csv_path: str = None) -> dict:
         skill._base_energy_cost = energy
         skill.effects = all_effects.get(name, [])
 
+        # 迸发标记：description 中包含"迸发"的技能
+        skill.burst = "迸发" in description
+        # 奉献标记：description 中包含"受奉献影响"的技能
+        skill.devotion_affected = "受奉献影响" in description
+
         _skill_db[name] = skill
 
     total = len(_skill_db)

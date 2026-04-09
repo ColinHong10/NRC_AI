@@ -594,7 +594,8 @@ def serialize_state(state: BattleState, waiting: bool = False,
                     game_over: bool = False, winner: str = None,
                     events: List[dict] = None,
                     force_switch_prompt: bool = False,
-                    force_switch_reason: str = "force_switch"):
+                    force_switch_reason: str = "force_switch",
+                    force_switch_alive: list = None):
     team_a_data = []
     for i, p in enumerate(state.team_a):
         d = serialize_pokemon(p, is_current=(i == state.current_a))
@@ -633,6 +634,7 @@ def serialize_state(state: BattleState, waiting: bool = False,
         "events":             events or [],
         "force_switch_prompt":  force_switch_prompt,
         "force_switch_reason":  force_switch_reason,  # "fainted" | "force_switch"
+        "force_switch_alive":   force_switch_alive,    # 后端计算好的可选精灵索引列表
     }
 
 
@@ -994,6 +996,13 @@ async def receive_player_action(ws: WebSocket, msg: dict):
     pending = state.pending_switch_requests
     if pending:
         state.pending_switch_requests = []
+        # 去重：每方只保留一个请求，fainted 优先于 force_switch
+        seen_teams = {}
+        for req in pending:
+            t = req["team"]
+            if t not in seen_teams or req.get("reason") == "fainted":
+                seen_teams[t] = req
+        pending = list(seen_teams.values())
         for req in pending:
             reason = req.get("reason", "force_switch")
             if req["team"] == "a":
@@ -1006,6 +1015,7 @@ async def receive_player_action(ws: WebSocket, msg: dict):
                     state, waiting=True, events=events,
                     force_switch_prompt=True,
                     force_switch_reason=reason,
+                    force_switch_alive=req["alive"],
                 )))
                 events = []
                 try:
@@ -1021,19 +1031,21 @@ async def receive_player_action(ws: WebSocket, msg: dict):
 
                 if msg2.get("type") == "switch" and msg2.get("index") in req["alive"]:
                     chosen = msg2["index"]
+                    already_placed = (chosen == state.current_a)
                     state.current_a = chosen
                     new_p = state.team_a[chosen]
                     session.add_log(f"  ↩️  换上 {new_p.name}")
-                    # 触发入场特性
-                    enemy_p = state.team_b[state.current_b]
-                    from src.battle import _apply_mark_on_enter
-                    _apply_mark_on_enter(state, "a", new_p)
-                    EffectExecutor.execute_agility_entry(state, new_p, enemy_p, "a")
-                    if new_p.ability_effects:
-                        EffectExecutor.execute_ability(
-                            state, new_p, enemy_p,
-                            Timing.ON_ENTER, new_p.ability_effects, "a",
-                        )
+                    # 入场特性：如果选的不是已占位的精灵才触发（避免重复）
+                    if not already_placed:
+                        enemy_p = state.team_b[state.current_b]
+                        from src.battle import _apply_mark_on_enter
+                        _apply_mark_on_enter(state, "a", new_p)
+                        EffectExecutor.execute_agility_entry(state, new_p, enemy_p, "a")
+                        if new_p.ability_effects:
+                            EffectExecutor.execute_ability(
+                                state, new_p, enemy_p,
+                                Timing.ON_ENTER, new_p.ability_effects, "a",
+                            )
             else:
                 # AI方由 AI 决策
                 chosen = _ai_switch_callback(state, state.team_b, req["alive"])

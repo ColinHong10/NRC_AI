@@ -677,6 +677,33 @@ SKILL_EFFECTS = {
         SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="grant_random_devotion", count=2)]),
     ],
 
+    # ── 奉献技能（使用时获得指定类型奉献1层）──
+
+    # 假寐: 回复2能量 + 获得1次奉献（能耗-2）
+    "假寐": [
+        SE(SkillTiming.ON_USE, [T(E.HEAL_ENERGY, amount=2), T(E.DEVOTION_GRANT, type="假寐")]),
+    ],
+    # 飞断: 造成物伤 + 获得1次奉献（威力+20）
+    "飞断": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE), T(E.DEVOTION_GRANT, type="飞断")]),
+    ],
+    # 虫茧: 回复20%生命 + 获得1次奉献（吸血+10%）
+    "虫茧": [
+        SE(SkillTiming.ON_USE, [T(E.HEAL_HP, pct=0.2), T(E.DEVOTION_GRANT, type="虫茧")]),
+    ],
+    # 捆缚: 敌方2层中毒 + 获得1次奉献（中毒2层）
+    "捆缚": [
+        SE(SkillTiming.ON_USE, [T(E.POISON, stacks=2), T(E.DEVOTION_GRANT, type="捆缚")]),
+    ],
+    # 束缚: 同捆缚
+    "束缚": [
+        SE(SkillTiming.ON_USE, [T(E.POISON, stacks=2), T(E.DEVOTION_GRANT, type="捆缚")]),
+    ],
+    # 虫群过境: 造成物伤2连击 + 获得1次奉献（连击+1）
+    "虫群过境": [
+        SE(SkillTiming.ON_USE, [T(E.DAMAGE), T(E.DEVOTION_GRANT, type="虫群过境")]),
+    ],
+
     # 伪造账单: 若敌方本回合回复生命，改为失去2倍（先手+1，通过priority_mod设置）
     "伪造账单": [
         SE(SkillTiming.ON_USE, [T(E.ABILITY_COMPUTE, action="anti_heal", multiplier=2)]),

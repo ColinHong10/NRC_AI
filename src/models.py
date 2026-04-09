@@ -210,6 +210,10 @@ class Skill:
         s.effects = [e.copy() for e in self.effects] if self.effects else []
         if hasattr(self, "_base_energy_cost"):
             s._base_energy_cost = self._base_energy_cost
+        if hasattr(self, "burst"):
+            s.burst = self.burst
+        if hasattr(self, "devotion_affected"):
+            s.devotion_affected = self.devotion_affected
         return s
 
 
@@ -341,8 +345,8 @@ class Pokemon:
         self.speed_down += skill.enemy_speed
 
     def on_switch_out(self) -> None:
-        """下场时清除：属性修正(Buff/Debuff) + 威力乘数 + 临时修改 + 蓄力。
-        保留：中毒/灼烧/寄生/冻伤/星陨/萌化（换人不清除，需主动清除技能消除）。"""
+        """下场时清除：属性修正(Buff/Debuff) + 威力乘数 + 临时修改 + 蓄力 + 中毒/灼烧/寄生。
+        保留：冻结/星陨/萌化（换人不清除）。"""
         self.atk_up = self.atk_down = 0.0
         self.def_up = self.def_down = 0.0
         self.spatk_up = self.spatk_down = 0.0
@@ -357,7 +361,13 @@ class Pokemon:
         self.skill_power_pct_mod = 0.0
         self.next_attack_power_bonus = 0
         self.next_attack_power_pct = 0.0
-        # 注: poison_stacks/burn_stacks/leech_stacks/freeze_stacks 换人保留
+        # 中毒/灼烧/寄生随宿主下场消失
+        self.poison_stacks = 0
+        self.burn_stacks = 0
+        self.leech_stacks = 0
+        # 注: freeze_stacks/frostbite_damage 冻结换人保留
+        # 注: meteor_stacks/meteor_countdown 星陨换人保留
+        # 注: cute_stacks 萌化换人保留
         self.charging_skill_idx = -1
 
     def reset_mods(self) -> None:

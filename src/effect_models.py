@@ -262,6 +262,7 @@ class E(Enum):
     BURST_EXTEND = auto()                # 连续负荷: 迸发效果延长1回合  params: {"extend": 1}
 
     # ── 奉献子系统 ──
+    DEVOTION_GRANT = auto()              # 使用技能时获得指定类型奉献  params: {type: str}
     DEVOTION_GRANT_RANDOM = auto()       # 花精灵: 回合结束随机获得1种奉献1层  params: {}
     DEVOTION_ON_HIT = auto()             # 坚韧铠甲: 受攻击时随机获得1种奉献1层  params: {}
 

@@ -82,6 +82,7 @@ def _clear_turn_temporary_ability_logic(state: BattleState) -> None:
             if pokemon.speed_up >= 0.5:
                 pokemon.speed_up -= 0.5
         pokemon.ability_state.pop("force_switch_after_action", None)
+        pokemon.ability_state.pop("anti_heal_multiplier", None)  # 伪造账单：只持续一回合
 
 
 def _transfer_pokemon_state(source: Pokemon, target: Pokemon) -> None:
@@ -337,6 +338,91 @@ def get_actions(state: BattleState, team: str) -> List[Action]:
 
 
 
+def ability_auto_switch(state: BattleState, team: str, reason: str,
+                        switch_cb_b=None) -> bool:
+    """
+    特性驱动的自动换人：
+    - reason="zero_energy"  → auto_switch_zero_energy / swap_ally_zero_energy
+    - reason="every_turn"   → auto_switch_every_turn
+    返回 True 表示实际发生了换人。
+    """
+    team_list = state.team_a if team == "a" else state.team_b
+    idx = state.current_a if team == "a" else state.current_b
+    current = team_list[idx]
+
+    if current.is_fainted:
+        return False
+
+    should_switch = False
+    if reason == "zero_energy":
+        # auto_switch_on_zero_energy: 能量降到0时自动换人
+        if (current.ability_state.get("auto_switch_zero_energy") and current.energy <= 0):
+            should_switch = True
+        # swap_ally_on_zero_energy: 能量降到0时换上队友（同效果）
+        elif (current.ability_state.get("swap_ally_zero_energy") and current.energy <= 0):
+            should_switch = True
+    elif reason == "every_turn":
+        if current.ability_state.get("auto_switch_every_turn"):
+            should_switch = True
+
+    if not should_switch:
+        return False
+
+    alive = [i for i, p in enumerate(team_list) if not p.is_fainted and i != idx]
+    if not alive:
+        return False
+
+    # 触发离场特性
+    enemy_list = state.team_b if team == "a" else state.team_a
+    enemy_idx = state.current_b if team == "a" else state.current_a
+    enemy = enemy_list[enemy_idx]
+    transfer_ctx = {}
+    if current.ability_effects:
+        from src.engine._monolith import EffectExecutor
+        EffectExecutor.execute_ability(
+            state, current, enemy, Timing.ON_LEAVE,
+            current.ability_effects, team, transfer_ctx,
+        )
+    current.on_switch_out()
+
+    if team == "a":
+        # 玩家侧：提交 pending_switch_request 让玩家选
+        state.current_a = alive[0]
+        state.switch_this_turn_a = True
+        state.pending_switch_requests = [
+            r for r in state.pending_switch_requests if r["team"] != "a"
+        ]
+        state.pending_switch_requests.append({
+            "team": "a",
+            "reason": reason,
+            "alive": alive,
+        })
+        new_pokemon = team_list[state.current_a]
+    else:
+        # AI 侧：自动选 alive[0]（可扩展 switch_cb_b）
+        if switch_cb_b and len(alive) > 1:
+            chosen = switch_cb_b(state, team_list, alive)
+            new_idx = chosen if chosen in alive else alive[0]
+        else:
+            new_idx = alive[0]
+        state.current_b = new_idx
+        state.switch_this_turn_b = True
+        new_pokemon = team_list[new_idx]
+
+    _apply_mark_on_enter(state, team, new_pokemon)
+    # 触发新精灵入场特性
+    if new_pokemon.ability_effects:
+        from src.engine._monolith import EffectExecutor
+        EffectExecutor.execute_ability(
+            state, new_pokemon, enemy, Timing.ON_ENTER,
+            new_pokemon.ability_effects, team,
+        )
+    # 迸发系统：记录入场回合号
+    burst_map = state.burst_entry_turn_a if team == "a" else state.burst_entry_turn_b
+    burst_map[new_pokemon.name] = state.turn
+    return True
+
+
 def auto_switch(state: BattleState, switch_cb_a=None, switch_cb_b=None) -> None:
     """
     被动换人：精灵倒下后选择下一只上场精灵，不占用行动回合。
@@ -349,14 +435,17 @@ def auto_switch(state: BattleState, switch_cb_a=None, switch_cb_b=None) -> None:
         alive = [i for i, p in enumerate(state.team_a) if not p.is_fainted]
         if alive:
             state.team_a[state.current_a].on_switch_out()
-            # 暂时换上 alive[0]，server.py 会通过 pending_switch_requests 让玩家选
+            # 暂时换上 alive[0] 占位，server.py 会通过 pending_switch_requests 让玩家选
             state.current_a = alive[0]
-            # 候选列表：alive[0] 已作占位，其余的才是可选候选；但若只有1只则直接用它
-            candidates = alive[1:] if len(alive) > 1 else alive
+            # 精灵死亡 → 清除同方已有的 force_switch 请求（死亡覆盖脱离，只需一次换人）
+            state.pending_switch_requests = [
+                r for r in state.pending_switch_requests if r["team"] != "a"
+            ]
+            # 候选列表：全部存活精灵（玩家可自由选择任意一只）
             state.pending_switch_requests.append({
                 "team": "a",
                 "reason": "fainted",
-                "alive": candidates,
+                "alive": alive,
             })
             # 印记入场效果（用占位精灵触发，玩家选完后再触发一次）
             _apply_mark_on_enter(state, "a", state.team_a[state.current_a])
@@ -365,6 +454,10 @@ def auto_switch(state: BattleState, switch_cb_a=None, switch_cb_b=None) -> None:
         alive = [i for i, p in enumerate(state.team_b) if not p.is_fainted]
         if alive:
             state.team_b[state.current_b].on_switch_out()
+            # 同理：死亡覆盖同方 force_switch
+            state.pending_switch_requests = [
+                r for r in state.pending_switch_requests if r["team"] != "b"
+            ]
             if switch_cb_b and len(alive) > 1:
                 chosen = switch_cb_b(state, state.team_b, alive)
                 state.current_b = chosen if chosen in alive else alive[0]
@@ -458,12 +551,27 @@ def turn_end_effects(state: BattleState) -> None:
             if p.poison_stacks > 0:
                 dmg = int(p.hp * 0.03 * p.poison_stacks)
                 p.current_hp -= max(1, dmg)
+                _check_frostbite_lethal(p)
+                if p.is_fainted:
+                    break
+
+            # 复方汤剂：对手有此特性时，己方中毒额外触发1次
+            enemy_p = enemy_team_list[enemy_idx]
+            if p.poison_stacks > 0 and enemy_p.ability_state.get("extra_poison_tick"):
+                dmg2 = int(p.hp * 0.03 * p.poison_stacks)
+                p.current_hp -= max(1, dmg2)
+                _check_frostbite_lethal(p)
+                if p.is_fainted:
+                    break
 
             # 燃烧: 2% × 层数, 然后层数减半(最少减1层)
             # 燃薪虫煤渣草: 灼烧不衰减反而增长
             if p.burn_stacks > 0:
                 dmg = int(p.hp * 0.02 * p.burn_stacks)
                 p.current_hp -= max(1, dmg)
+                _check_frostbite_lethal(p)
+                if p.is_fainted:
+                    break
                 # 判断对手是否有煤渣草特性 (对手的在场精灵)
                 enemy_team_id = "b" if team_id == "a" else "a"
                 if enemy_team_id in burn_no_decay:
@@ -474,31 +582,43 @@ def turn_end_effects(state: BattleState) -> None:
                     decay = max(1, p.burn_stacks // 2)
                     p.burn_stacks = max(0, p.burn_stacks - decay)
 
-            # 冻伤: 每回合累加 hp//12 不可恢复伤害
+            # 冻伤: 每回合累加 hp//12 不可恢复伤害, 实时致死检查
             if p.frostbite_damage > 0 or p.freeze_stacks > 0:
                 frost_tick = p.hp // 12
                 p.frostbite_damage += frost_tick
-                if p.current_hp <= p.frostbite_damage:
-                    p.current_hp = 0
-                else:
-                    effective_max = p.effective_max_hp
-                    if p.current_hp > effective_max:
-                        p.current_hp = effective_max
+                _check_frostbite_lethal(p)
+                # 冻结致死后跳过后续状态伤害
+                if p.is_fainted:
+                    break
 
             # 寄生: 每层8%最大HP, 吸取给对手
             if p.leech_stacks > 0:
                 leech_dmg = int(p.hp * 0.08 * p.leech_stacks)
                 p.current_hp -= max(1, leech_dmg)
+                _check_frostbite_lethal(p)
+                if p.is_fainted:
+                    break
                 enemy = enemy_team_list[enemy_idx]
                 if not enemy.is_fainted:
-                    enemy.current_hp = min(enemy.hp, enemy.current_hp + leech_dmg)
+                    anti = enemy.ability_state.get("anti_heal_multiplier", 0)
+                    if anti:
+                        enemy.current_hp = max(0, enemy.current_hp - leech_dmg)
+                    else:
+                        enemy.current_hp = min(enemy.hp, enemy.current_hp + leech_dmg)
 
             # 星陨: 倒计时-1, 到0时引爆
             if p.meteor_countdown > 0:
                 p.meteor_countdown -= 1
                 if p.meteor_countdown <= 0 and p.meteor_stacks > 0:
                     enemy = enemy_team_list[enemy_idx]
-                    meteor_power = 30 * p.meteor_stacks
+                    # 守望星：消耗一半层数但满伤
+                    if p.ability_state.get("half_meteor_full_damage"):
+                        actual_stacks = max(1, p.meteor_stacks // 2)
+                        p.meteor_stacks = max(0, p.meteor_stacks - actual_stacks)
+                    else:
+                        actual_stacks = p.meteor_stacks
+                        p.meteor_stacks = 0
+                    meteor_power = 30 * actual_stacks
                     if not enemy.is_fainted:
                         e_spatk = enemy.effective_spatk()
                         p_spdef = max(1.0, p.effective_spdef())
@@ -506,11 +626,26 @@ def turn_end_effects(state: BattleState) -> None:
                     else:
                         meteor_dmg = max(1, meteor_power)
                     p.current_hp -= meteor_dmg
-                    p.meteor_stacks = 0
+
+            # 生长特性：每回合回12%HP
+            heal_per_turn = p.ability_state.get("heal_per_turn_pct", 0)
+            if heal_per_turn > 0 and not p.is_fainted:
+                heal = int(p.hp * heal_per_turn)
+                anti = p.ability_state.get("anti_heal_multiplier", 0)
+                if anti:
+                    p.current_hp = max(0, p.current_hp - max(1, heal))
+                else:
+                    p.current_hp = min(p.hp, p.current_hp + max(1, heal))
 
             # 如果已倒下，跳出多重触发循环
             if p.current_hp <= 0:
                 break
+
+        # 吸积盘：回合结束给己方（敌方）添加星陨印记
+        meteor_add = p.ability_state.get("meteor_mark_add", 0)
+        if meteor_add > 0 and not p.is_fainted:
+            enemy_marks = state.marks_b if team_id == "a" else state.marks_a
+            enemy_marks["meteor_mark"] = enemy_marks.get("meteor_mark", 0) + meteor_add
 
         # 判定倒下
         if p.current_hp <= 0:
@@ -570,17 +705,22 @@ def _check_fainted_and_deduct_mp(state: BattleState) -> None:
     pb = state.team_b[state.current_b]
     if pa.is_fainted and not pa.ability_state.get("faint_processed"):
         pa.ability_state["faint_processed"] = True
-        state.mp_a -= 1
-        # 触发 ON_FAINT 特性（不朽等）
+        # 诈死特性：力竭时不扣MP
+        if not pa.ability_state.get("faint_no_mp_loss"):
+            state.mp_a -= 1
+        # 触发 ON_FAINT 特性（不朽/付给恶魔的赎价等）
         if pa.ability_effects:
             EffectExecutor.execute_ability(
-                state, pa, pb, Timing.ON_FAINT, pa.ability_effects, "a")
+                state, pa, pb, Timing.ON_FAINT, pa.ability_effects, "a",
+                context={"_ability_timing": "ON_FAINT"})
     if pb.is_fainted and not pb.ability_state.get("faint_processed"):
         pb.ability_state["faint_processed"] = True
-        state.mp_b -= 1
+        if not pb.ability_state.get("faint_no_mp_loss"):
+            state.mp_b -= 1
         if pb.ability_effects:
             EffectExecutor.execute_ability(
-                state, pb, pa, Timing.ON_FAINT, pb.ability_effects, "b")
+                state, pb, pa, Timing.ON_FAINT, pb.ability_effects, "b",
+                context={"_ability_timing": "ON_FAINT"})
 
 
 def _apply_moisture_mark(state: BattleState) -> None:
@@ -728,6 +868,35 @@ def get_mark_damage_modifiers(state: BattleState, team: str, is_first: bool,
     return mods
 
 
+def _get_current_pokemon(state: BattleState, team: str) -> "Pokemon":
+    """获取指定方当前在场精灵。"""
+    if team == "a":
+        return state.team_a[state.current_a]
+    return state.team_b[state.current_b]
+
+
+def _apply_share_gains(state: BattleState, team: str, hp_before: int, energy_before: int) -> None:
+    """系统发育：如果在场精灵有 share_gains，将本次获得的能量/生命等量分配给场下精灵。"""
+    team_list = state.team_a if team == "a" else state.team_b
+    idx = state.current_a if team == "a" else state.current_b
+    current = team_list[idx]
+    if not current.ability_state.get("share_gains") or current.is_fainted:
+        return
+    hp_gained = max(0, current.current_hp - hp_before)
+    energy_gained = max(0, current.energy - energy_before)
+    if hp_gained == 0 and energy_gained == 0:
+        return
+    bench = [p for i, p in enumerate(team_list) if i != idx and not p.is_fainted]
+    if not bench:
+        return
+    # 将获得的等量分配给场下每只精灵（每只都获得全额）
+    for p in bench:
+        if hp_gained > 0:
+            p.current_hp = min(p.hp, p.current_hp + hp_gained)
+        if energy_gained > 0:
+            p.gain_energy(energy_gained)
+
+
 def _get_skill_for_action(state: BattleState, team: str, action: Action) -> Optional[Skill]:
     """从 action 中获取技能对象，换人/跳过返回 None。"""
     if action[0] < 0:
@@ -823,27 +992,48 @@ def execute_full_turn(state: BattleState, action_a: Action, action_b: Action,
             first_team, second_team = "b", "a"
             first_act, second_act = action_b, action_a
 
+    # ── 记录后手方精灵是否在先手行动前存活，用于判断是否被击杀 ──
+    second_pokemon_before = _get_current_pokemon(state, second_team)
+    second_alive_before = not second_pokemon_before.is_fainted
+
     # 先手行动
+    _first_p = _get_current_pokemon(state, first_team)
+    _first_hp, _first_en = _first_p.current_hp, _first_p.energy
     _execute_with_counter(state, first_team, first_act, second_team, second_act, is_first=True)
+    _apply_share_gains(state, first_team, _first_hp, _first_en)
     _check_fainted_and_deduct_mp(state)
     auto_switch(state, switch_cb_a, switch_cb_b)
+    # 特性：零能量自动换人
+    ability_auto_switch(state, first_team, "zero_energy", switch_cb_b)
 
     if check_winner(state):
         _clear_turn_temporary_ability_logic(state)
         return
 
-    # 后手行动
-    _execute_with_counter(state, second_team, second_act, first_team, first_act, is_first=False)
-    _check_fainted_and_deduct_mp(state)
-    auto_switch(state, switch_cb_a, switch_cb_b)
+    # ── 后手精灵被先手击杀 → 跳过后手行动（死亡精灵无法出招，被动换人消耗本回合）──
+    second_killed_by_first = second_alive_before and second_pokemon_before.is_fainted
 
-    if check_winner(state):
-        _clear_turn_temporary_ability_logic(state)
-        return
+    if not second_killed_by_first:
+        # 后手行动
+        _second_p = _get_current_pokemon(state, second_team)
+        _second_hp, _second_en = _second_p.current_hp, _second_p.energy
+        _execute_with_counter(state, second_team, second_act, first_team, first_act, is_first=False)
+        _apply_share_gains(state, second_team, _second_hp, _second_en)
+        _check_fainted_and_deduct_mp(state)
+        auto_switch(state, switch_cb_a, switch_cb_b)
+        # 特性：零能量自动换人
+        ability_auto_switch(state, second_team, "zero_energy", switch_cb_b)
+
+        if check_winner(state):
+            _clear_turn_temporary_ability_logic(state)
+            return
 
     turn_end_effects(state)
     _check_fainted_and_deduct_mp(state)
     auto_switch(state, switch_cb_a, switch_cb_b)
+    # 特性：每回合末自动换人
+    for _t in ("a", "b"):
+        ability_auto_switch(state, _t, "every_turn", switch_cb_b)
     state.turn += 1
 
 
@@ -865,11 +1055,19 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
     if action[0] == -2:
         old_pokemon = current
         switch_snapshot = current.copy_state()
+        # 先保存属性快照（on_switch_out 会清零 buff）
+        _snapshot_mods = {
+            "atk_up": old_pokemon.atk_up, "atk_down": old_pokemon.atk_down,
+            "def_up": old_pokemon.def_up, "def_down": old_pokemon.def_down,
+            "spatk_up": old_pokemon.spatk_up, "spatk_down": old_pokemon.spatk_down,
+            "spdef_up": old_pokemon.spdef_up, "spdef_down": old_pokemon.spdef_down,
+            "speed_up": old_pokemon.speed_up, "speed_down": old_pokemon.speed_down,
+        }
         current.on_switch_out()
         _clear_mirror_buff(old_pokemon, state, team)  # 公平鸽下场时清除对手镜像引用
 
         # 特性: 离场触发 (翠顶夫人洁癖)
-        transfer_ctx = {}
+        transfer_ctx = {"_snapshot_mods": _snapshot_mods}
         if old_pokemon.ability_effects:
             EffectExecutor.execute_ability(
                 state, old_pokemon, enemy, Timing.ON_LEAVE,
@@ -899,6 +1097,17 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
             new_pokemon.speed_up  += mods.get("speed_up", 0)
             new_pokemon.speed_down += mods.get("speed_down", 0)
 
+        # 茶多酚: 离场后替换精灵回血
+        if "leave_heal_ally" in transfer_ctx:
+            heal_pct = transfer_ctx["leave_heal_ally"]
+            heal = int(new_pokemon.hp * heal_pct)
+            new_pokemon.current_hp = min(new_pokemon.hp, new_pokemon.current_hp + heal)
+
+        # 美拉德反应: 离场后替换精灵获得 buff
+        if "leave_buff_ally" in transfer_ctx:
+            from src.effect_engine import _apply_buff
+            _apply_buff(new_pokemon, transfer_ctx["leave_buff_ally"])
+
         # 特性: 入场触发
         if new_pokemon.ability_effects:
             EffectExecutor.execute_ability(
@@ -921,6 +1130,19 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
 
         # 迅捷：入场时自动释放带 agility 标记的技能
         EffectExecutor.execute_agility_entry(state, new_pokemon, enemy, team)
+
+        # 荟萃特性：入场时自动释放所有普通系技能（能耗翻倍）
+        if new_pokemon.ability_state.pop("cast_all_normal_double_cost", False):
+            from src.models import Type as PkType
+            for s in new_pokemon.skills:
+                if s.skill_type == PkType.NORMAL:
+                    cost = s.energy_cost * 2
+                    if new_pokemon.energy >= cost and not s.charge:
+                        new_pokemon.energy -= cost
+                        EffectExecutor.execute_skill(
+                            state, new_pokemon, enemy, s, s.effects,
+                            is_first=True, team=team,
+                        )
 
         # 印记入场效果（降灵/荆刺/蓄电）
         _apply_mark_on_enter(state, team, new_pokemon)
@@ -970,13 +1192,18 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
     # ── 蓄力逻辑（增强版）──
     if skill.charge:
         if current.charging_skill_idx != action[0]:
-            current.charging_skill_idx = action[0]
-            # 洄游特性：进入蓄力时全技能能耗永久-1
-            charge_reduce = current.ability_state.get("charge_cost_reduce", 0)
-            if charge_reduce > 0:
-                for s in current.skills:
-                    s.energy_cost = max(0, s.energy_cost - charge_reduce)
-            return
+            # 嫉妒特性：蓄力状态下可用任一技能（直接释放，无需等待第二次点击）
+            if current.ability_state.get("charge_free_skill") and current.charging_skill_idx >= 0:
+                # 已在蓄力中，直接跳过等待，继续执行
+                current.charging_skill_idx = -1
+            else:
+                current.charging_skill_idx = action[0]
+                # 洄游特性：进入蓄力时全技能能耗永久-1
+                charge_reduce = current.ability_state.get("charge_cost_reduce", 0)
+                if charge_reduce > 0:
+                    for s in current.skills:
+                        s.energy_cost = max(0, s.energy_cost - charge_reduce)
+                return
         else:
             current.charging_skill_idx = -1
 
@@ -1094,14 +1321,63 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
         if dev_hits > 0:
             current.hit_count_mod += dev_hits
 
+    # ── 先手特性（双鱼座/双生子等）──
+    if is_first:
+        # first_strike_power_bonus: 先手时威力 +N%
+        fs_power = current.ability_state.get("first_strike_power_bonus", 0)
+        if fs_power > 0 and skill.category in (SkillCategory.PHYSICAL, SkillCategory.MAGICAL):
+            bonus = int(skill.power * fs_power)
+            skill.power += bonus
+            current.ability_state["_fs_power_applied"] = bonus
+        # first_strike_hit_bonus: 先手时连击+1
+        if current.ability_state.get("first_strike_hit_bonus"):
+            current.hit_count_mod += 1
+            current.ability_state["_fs_hit_applied"] = True
+
     # 所有技能走新引擎（效果由 EffectTag 驱动）
     _execute_new_engine(state, team, enemy_team, current, enemy, skill,
                         action, enemy_action, team_list, idx, is_first)
+
+    # ── 先手特性清理 ──
+    fs_power_applied = current.ability_state.pop("_fs_power_applied", 0)
+    if fs_power_applied > 0:
+        skill.power -= fs_power_applied
+    if current.ability_state.pop("_fs_hit_applied", False):
+        current.hit_count_mod -= 1
 
     # ── 迸发后清理：恢复临时威力修改 ──
     burst_applied = current.ability_state.pop("_burst_power_applied", 0)
     if burst_applied > 0:
         skill.power -= burst_applied
+
+
+def _check_pre_interrupt(skill: Skill, enemy_skill) -> bool:
+    """检查对方技能（enemy_skill）是否有针对本技能（skill）的应对打断（INTERRUPT）。
+    
+    用于在 execute_skill 之前判断：如果被打断，跳过主效果。
+    这确保了"攻击应对状态→打断"时，状态技能的 buff 不会先生效再被打断。
+    """
+    if not enemy_skill or not getattr(enemy_skill, "effects", None):
+        return False
+    from src.effect_models import SkillEffect as _SE, SkillTiming as _ST
+    cat_map = {
+        SkillCategory.PHYSICAL: "attack",
+        SkillCategory.MAGICAL: "attack",
+        SkillCategory.STATUS: "status",
+        SkillCategory.DEFENSE: "defense",
+    }
+    my_cat = cat_map.get(skill.category, "")
+    if not my_cat:
+        return False
+    for item in enemy_skill.effects:
+        if isinstance(item, _SE) and item.timing == _ST.ON_COUNTER:
+            counter_cat = item.filter.get("category", "")
+            if counter_cat == my_cat or not counter_cat:
+                # 检查该应对是否包含 INTERRUPT
+                for tag in item.effects:
+                    if tag.type == E.INTERRUPT:
+                        return True
+    return False
 
 
 def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
@@ -1116,11 +1392,28 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
     if enemy_action[0] >= 0 and not enemy.is_fainted:
         enemy_skill = enemy.skills[enemy_action[0]]
 
-    # 执行主效果
-    result = EffectExecutor.execute_skill(
-        state, current, enemy, skill, skill.effects,
-        is_first=is_first, enemy_skill=enemy_skill, team=team,
-    )
+    # ── 前置打断检查 ──
+    # 如果对方技能有针对本技能类型的应对打断（INTERRUPT），本技能主效果不执行
+    interrupted_by_counter = _check_pre_interrupt(skill, enemy_skill)
+
+    if interrupted_by_counter:
+        # 被打断：跳过主效果，但仍要创建 result 供后续应对阶段使用
+        result = {
+            "damage": 0,
+            "interrupted": True,
+            "countered": False,
+            "force_switch": False,
+            "force_enemy_switch": False,
+            "counter_effects": [],
+            "_user_hp_start": current.current_hp,
+            "_target_hp_start": enemy.current_hp,
+        }
+    else:
+        # 正常执行主效果
+        result = EffectExecutor.execute_skill(
+            state, current, enemy, skill, skill.effects,
+            is_first=is_first, enemy_skill=enemy_skill, team=team,
+        )
 
     damage = result["damage"]
 
@@ -1141,7 +1434,7 @@ def _execute_new_engine(state: BattleState, team: str, enemy_team: str,
 
     # ── 阶段4: 特性减伤 + 扣血 ──
     damage = _apply_ability_damage_reduction(state, current, enemy, skill, damage, enemy_team)
-    _apply_damage_to_enemy(state, enemy, damage)
+    _apply_damage_to_enemy(state, enemy, damage, attacker=current, skill=skill)
 
     # ── 阶段5: 击败效果 ──
     _check_kill_effects(state, current, enemy, skill, result, team, enemy_team)
@@ -1200,10 +1493,10 @@ def _resolve_self_counters(state, current, enemy, skill, enemy_skill,
             current.ability_state["last_counter_success_turn"] = state.turn
             _handle_counter_success_ability(state, current, skill)
             _trigger_ally_counter_effects(state, team, enemy)
-            # 应对效果里的脱离标签：只有应对成功时才触发
-            if counter_result and counter_result.get("force_switch"):
+            # 应对效果里的脱离标签：只有应对成功且精灵未死时才触发
+            if counter_result and counter_result.get("force_switch") and not current.is_fainted:
                 result["force_switch"] = True
-            if counter_result and counter_result.get("force_enemy_switch"):
+            if counter_result and counter_result.get("force_enemy_switch") and not enemy.is_fainted:
                 result["force_enemy_switch"] = True
 
     return damage
@@ -1253,37 +1546,13 @@ def _resolve_enemy_counters(state, current, enemy, skill, enemy_skill,
             _trigger_ally_counter_effects(state, enemy_team, current)
 
         # 应对方自己脱离（泡沫幻影等：应对攻击后自己脱离）
-        if counter_result and counter_result.get("force_switch"):
-            enemy_list_ref = state.team_a if enemy_team == "a" else state.team_b
-            enemy_idx = state.current_a if enemy_team == "a" else state.current_b
-            alive = [i for i, p in enumerate(enemy_list_ref)
-                     if not p.is_fainted and i != enemy_idx]
-            if alive:
-                enemy.on_switch_out()
-                new_idx = random.choice(alive)
-                if enemy_team == "a":
-                    state.current_a = new_idx
-                else:
-                    state.current_b = new_idx
+        # 延迟到 _handle_post_skill_switches 统一处理，避免阶段3提前执行 on_switch_out
+        if counter_result and counter_result.get("force_switch") and not enemy.is_fainted:
+            result["_counter_enemy_self_switch"] = True
 
         # 应对方强制敌方脱离（吓退等：应对攻击后敌方脱离）
-        if counter_result and counter_result.get("force_enemy_switch"):
-            alive = [i for i, p in enumerate(team_list)
-                     if not p.is_fainted and i != idx]
-            if alive:
-                current.on_switch_out()
-                if team == "a":
-                    # 玩家方被逼退 → 弹选人面板
-                    state.current_a = alive[0]  # 暂时占位
-                    state.pending_switch_requests.append({
-                        "team": "a",
-                        "reason": "force_switch",
-                        "alive": alive,
-                    })
-                else:
-                    # AI方被逼退 → 随机选
-                    new_idx = random.choice(alive)
-                    state.current_b = new_idx
+        if counter_result and counter_result.get("force_enemy_switch") and not current.is_fainted:
+            result["_counter_force_attacker_switch"] = True
 
 
 def _apply_ability_damage_reduction(state, current, enemy, skill, damage, enemy_team) -> int:
@@ -1305,13 +1574,35 @@ def _apply_ability_damage_reduction(state, current, enemy, skill, damage, enemy_
     return damage
 
 
-def _apply_damage_to_enemy(state, enemy, damage: int) -> None:
+def _check_frostbite_lethal(pokemon: "Pokemon") -> None:
+    """冻结实时致死检查：任何时刻 current_hp <= frostbite_damage 时精灵直接死亡。
+    冻结累积值 frostbite_damage 每回合增加 hp//12，此函数在 HP 变动后调用。"""
+    if pokemon.is_fainted:
+        return
+    if pokemon.frostbite_damage > 0 and pokemon.current_hp <= pokemon.frostbite_damage:
+        pokemon.current_hp = 0
+        pokemon.status = StatusType.FAINTED
+
+
+def _apply_damage_to_enemy(state, enemy, damage: int, attacker=None, skill=None) -> None:
     """对敌方造成最终伤害。"""
     if damage > 0 and not enemy.is_fainted:
-        enemy.current_hp -= damage
-        if enemy.current_hp <= 0:
-            enemy.current_hp = 0
-            enemy.status = StatusType.FAINTED
+        # 惊吓：攻击方能量=0时免疫伤害
+        if enemy.ability_state.get("immune_zero_energy_attacker"):
+            if attacker is not None and attacker.energy <= 0:
+                damage = 0
+        # 逐魂鸟：能耗≤1的技能无法对自己造伤
+        if damage > 0 and enemy.ability_state.get("immune_low_cost_attack") is not None:
+            threshold = enemy.ability_state["immune_low_cost_attack"]
+            if skill is not None and getattr(skill, "_last_actual_cost", skill.energy_cost) <= threshold:
+                damage = 0
+        if damage > 0:
+            enemy.current_hp -= damage
+            if enemy.current_hp <= 0:
+                enemy.current_hp = 0
+                enemy.status = StatusType.FAINTED
+    # 冻结实时致死：伤害后 HP 可能降到冻结阈值以下
+    _check_frostbite_lethal(enemy)
     if enemy.ability_state.pop("guard_transform_pending", None):
         _transform_to_guard_queen(enemy)
 
@@ -1324,6 +1615,14 @@ def _check_kill_effects(state, current, enemy, skill, result, team, enemy_team) 
                 marks = state.marks_b if team == "a" else state.marks_a
                 marks["poison_mark"] = marks.get("poison_mark", 0) + enemy.poison_stacks
                 enemy.poison_stacks = 0
+
+        # 攻击方：击败敌方时触发 ON_KILL 特性（恶魔的晚宴/振奋虫心/付给恶魔的赎价等）
+        if current.ability_effects:
+            EffectExecutor.execute_ability(
+                state, current, enemy, Timing.ON_KILL,
+                current.ability_effects, team,
+                context={"_ability_timing": "ON_KILL"},
+            )
 
         if enemy.ability_effects:
             EffectExecutor.execute_ability(
@@ -1342,8 +1641,11 @@ def _check_kill_effects(state, current, enemy, skill, result, team, enemy_team) 
 
 
 def _handle_post_skill_switches(state, current, enemy, result, team, team_list, idx) -> None:
-    """处理技能后的换人（脱离/强制换人/吓退）。"""
-    if result.get("force_switch"):
+    """处理技能后的换人（脱离/强制换人/吓退）。已死精灵不触发任何换人。"""
+    enemy_team = "b" if team == "a" else "a"
+
+    # ── 攻击方自己脱离（技能自带 force_switch）──
+    if result.get("force_switch") and not current.is_fainted:
         alive = [i for i, p in enumerate(team_list) if not p.is_fainted and i != idx]
         if alive:
             current.on_switch_out()
@@ -1366,15 +1668,15 @@ def _handle_post_skill_switches(state, current, enemy, result, team, team_list, 
             else:
                 state.current_b = new_idx
 
-    if result.get("force_enemy_switch"):
+    # ── 攻击方强制敌方脱离（技能自带 force_enemy_switch）──
+    if result.get("force_enemy_switch") and not enemy.is_fainted:
         eidx = state.current_b if team == "a" else state.current_a
         enemy_list_ref = state.team_b if team == "a" else state.team_a
         alive = [i for i, p in enumerate(enemy_list_ref) if not p.is_fainted and i != eidx]
         if alive:
             enemy.on_switch_out()
-            if team == "b":
-                # AI用技能逼退玩家 → 玩家手动选
-                enemy_list_ref[eidx].on_switch_out()
+            if enemy_team == "a":
+                # 玩家方被逼退 → 弹选人面板
                 state.current_a = alive[0]  # 暂时占位
                 state.pending_switch_requests.append({
                     "team": "a",
@@ -1382,7 +1684,45 @@ def _handle_post_skill_switches(state, current, enemy, result, team, team_list, 
                     "alive": alive,
                 })
             else:
-                # 玩家用技能逼退AI → AI随机选
+                # AI方被逼退 → AI随机选
+                new_idx = random.choice(alive)
+                state.current_b = new_idx
+
+    # ── 应对方自己脱离（泡沫幻影等：应对成功后自己下场）──
+    if result.get("_counter_enemy_self_switch") and not enemy.is_fainted:
+        eidx = state.current_b if team == "a" else state.current_a
+        enemy_list_ref = state.team_b if team == "a" else state.team_a
+        alive = [i for i, p in enumerate(enemy_list_ref) if not p.is_fainted and i != eidx]
+        if alive:
+            enemy.on_switch_out()
+            if enemy_team == "a":
+                # 玩家方脱离 → 弹选人面板
+                state.current_a = alive[0]  # 暂时占位
+                state.pending_switch_requests.append({
+                    "team": "a",
+                    "reason": "force_switch",
+                    "alive": alive,
+                })
+            else:
+                # AI方脱离 → AI随机选
+                new_idx = random.choice(alive)
+                state.current_b = new_idx
+
+    # ── 应对方强制攻击方脱离（吓退等：应对成功后逼退攻击方）──
+    if result.get("_counter_force_attacker_switch") and not current.is_fainted:
+        alive = [i for i, p in enumerate(team_list) if not p.is_fainted and i != idx]
+        if alive:
+            current.on_switch_out()
+            if team == "a":
+                # 玩家方被逼退 → 弹选人面板
+                state.current_a = alive[0]  # 暂时占位
+                state.pending_switch_requests.append({
+                    "team": "a",
+                    "reason": "force_switch",
+                    "alive": alive,
+                })
+            else:
+                # AI方被逼退 → AI随机选
                 new_idx = random.choice(alive)
                 state.current_b = new_idx
 
@@ -1553,7 +1893,7 @@ class TeamBuilder:
                     sp_attack=spatk, sp_defense=spdef,
                     speed=spd, ability=ability, skills=skills)
         p.ability_effects = ability_effects
-        # 初始化被动标记（对流等需要在加载时就设置）
+        # 初始化被动标记（PASSIVE 特性需要在加载时就设置，确保立即生效）
         for ae in ability_effects:
             for tag in ae.effects:
                 if tag.type == E.COST_INVERT:
@@ -1566,6 +1906,28 @@ class TeamBuilder:
                     p.ability_state["fixed_hit_count_all"] = tag.params.get("count", 2)
                 elif tag.type == E.HIT_COUNT_PER_POISON:
                     p.ability_state["hit_count_per_poison"] = True
+                elif tag.type == E.FAINT_NO_MP_LOSS:
+                    p.ability_state["faint_no_mp_loss"] = True
+                elif tag.type == E.EXTRA_POISON_TICK:
+                    p.ability_state["extra_poison_tick"] = True
+                elif tag.type == E.HEAL_PER_TURN:
+                    p.ability_state["heal_per_turn_pct"] = tag.params.get("heal_pct", 0.12)
+                elif tag.type == E.SHARE_GAINS:
+                    p.ability_state["share_gains"] = True
+                elif tag.type == E.HALF_METEOR_FULL_DAMAGE:
+                    p.ability_state["half_meteor_full_damage"] = True
+                elif tag.type == E.CHARGE_FREE_SKILL:
+                    p.ability_state["charge_free_skill"] = True
+                elif tag.type == E.COST_CHANGE_DOUBLE:
+                    p.ability_state["cost_change_double"] = True
+                elif tag.type == E.TURN_END_REPEAT:
+                    delta = tag.params.get("delta", 1)
+                    p.ability_state["turn_end_repeat"] = p.ability_state.get("turn_end_repeat", 0) + delta
+                elif tag.type == E.TURN_END_SKIP:
+                    delta = tag.params.get("delta", 1)
+                    p.ability_state["turn_end_skip"] = p.ability_state.get("turn_end_skip", 0) + delta
+                elif tag.type == E.BUFF_EXTRA_LAYERS:
+                    p.ability_state["buff_extra_layers"] = tag.params.get("extra", 2)
                 # ── 萌化被动 ──
                 elif tag.type == E.CUTE_NO_CAP:
                     p.ability_state["cute_no_cap"] = True

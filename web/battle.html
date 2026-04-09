@@ -625,7 +625,7 @@ function renderState(s){
     setWait(false);
     enableActions(false);
     renderSkills(null, null);
-    renderForceSwitchPanel(s.team_a, s.current_a, pb, s.force_switch_reason || 'force_switch');
+    renderForceSwitchPanel(s.team_a, s.current_a, pb, s.force_switch_reason || 'force_switch', s.force_switch_alive);
   } else if(s.waiting_for_player && !s.game_over){
     myTurn=true;
     setWait(false);
@@ -833,7 +833,7 @@ function renderSwitchPanel(teamA, curIdx, enemyPoke){
   panel.appendChild(back);
 }
 
-function renderForceSwitchPanel(teamA, curIdx, enemyPoke, reason){
+function renderForceSwitchPanel(teamA, curIdx, enemyPoke, reason, aliveFromServer){
   document.getElementById('switch-panel').classList.add('open');
   const panel=document.getElementById('switch-panel');
   panel.innerHTML='';
@@ -847,16 +847,27 @@ function renderForceSwitchPanel(teamA, curIdx, enemyPoke, reason){
   }
   panel.appendChild(title);
 
-  // 强制换人：显示所有存活精灵，但排除当前占位在场的精灵（curIdx）
-  const alive = teamA.filter((p,i) => !p.is_fainted && i !== curIdx);
-  if(alive.length === 0){
-    // 只剩一只且就是 curIdx，自动确认（无需选）
+  // 优先使用后端传来的 alive 列表（准确的可选索引）
+  // 后备：前端自行计算（兼容旧版本）
+  let allowedIndices;
+  if(aliveFromServer && aliveFromServer.length > 0){
+    allowedIndices = new Set(aliveFromServer);
+  } else {
+    // fallback: 死亡时全部存活可选，脱离时排除当前
+    const excludeCur = (reason !== 'fainted');
+    allowedIndices = new Set();
+    teamA.forEach((p,i) => {
+      if(!p.is_fainted && !(excludeCur && i === curIdx)) allowedIndices.add(i);
+    });
+  }
+
+  if(allowedIndices.size === 0){
     doForceSwitch(curIdx);
     return;
   }
 
   teamA.forEach((p,i)=>{
-    if(p.is_fainted || i === curIdx) return;
+    if(!allowedIndices.has(i)) return;
     const card=document.createElement('button');
     card.className='sw-card';
     card.innerHTML=_swCardHtml(p, i, true);
