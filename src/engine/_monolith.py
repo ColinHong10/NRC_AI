@@ -124,6 +124,25 @@ def _apply_buff(pokemon: "Pokemon", params: Dict) -> None:
         pokemon.def_up += params["all_def"] * multiplier
         pokemon.spdef_up += params["all_def"] * multiplier
 
+    # 公平鸽「衡量」镜像：若该精灵的对手身上有 mirror_buff_to 指向该精灵，
+    # 则同步把相同 buff 也给对手（不再递归触发）
+    mirror_target = pokemon.ability_state.get("mirror_buff_to")
+    if mirror_target is not None and not mirror_target.is_fainted:
+        # 直接写 *_up 字段，不调用 _apply_buff 避免递归
+        mirror_extra = mirror_target.ability_state.get("buff_extra_layers", 0)
+        mirror_mult = 1 + mirror_extra if mirror_extra > 0 else 1
+        if "atk" in params:       mirror_target.atk_up   += params["atk"]   * mirror_mult
+        if "def" in params:       mirror_target.def_up   += params["def"]   * mirror_mult
+        if "spatk" in params:     mirror_target.spatk_up += params["spatk"] * mirror_mult
+        if "spdef" in params:     mirror_target.spdef_up += params["spdef"] * mirror_mult
+        if "speed" in params:     mirror_target.speed_up += params["speed"] * mirror_mult
+        if "all_atk" in params:
+            mirror_target.atk_up   += params["all_atk"] * mirror_mult
+            mirror_target.spatk_up += params["all_atk"] * mirror_mult
+        if "all_def" in params:
+            mirror_target.def_up   += params["all_def"] * mirror_mult
+            mirror_target.spdef_up += params["all_def"] * mirror_mult
+
 
 def _apply_debuff(pokemon: "Pokemon", params: Dict) -> None:
     """应用负向属性修改（写入 *_down 字段，params 中的值为正数）"""
@@ -164,16 +183,15 @@ def _clear_buffs(pokemon: "Pokemon") -> None:
 
 
 def _clear_debuffs(pokemon: "Pokemon") -> None:
-    """清除所有负向减益（*_down 字段归零）"""
+    """清除属性负向减益（*_down 字段归零）。
+    注意：不清除 poison/burn/leech/freeze 等持久状态——这些只能通过主动清除技能消除。
+    """
     pokemon.atk_down = 0.0
     pokemon.def_down = 0.0
     pokemon.spatk_down = 0.0
     pokemon.spdef_down = 0.0
     pokemon.speed_down = 0.0
-    pokemon.poison_stacks = 0
-    pokemon.burn_stacks = 0
-    pokemon.freeze_stacks = 0
-    pokemon.leech_stacks = 0
+    # poison_stacks / burn_stacks / freeze_stacks / leech_stacks 不在此清除
     pokemon.priority_stage = max(0, pokemon.priority_stage)
 
 
@@ -1635,7 +1653,36 @@ def _h_cost_invert(tag: EffectTag, ctx: Ctx) -> None:
     """COST_INVERT: 对流 — 设置能耗反转被动标记"""
     ctx.user.ability_state["cost_invert"] = True
 
-# ── TIER 1 特性 handler ──
+
+def _h_mirror_enemy_buffs(tag: EffectTag, ctx: Ctx) -> None:
+    """MIRROR_ENEMY_BUFFS: 公平鸽「衡量」
+    ON_ENTER: 复制敌方当前所有属性提升（*_up）和能量到自身；
+              同时在 ctx.user 上设置 mirror_buff_to=None（清除旧引用），
+              在 ctx.target 上设置 mirror_buff_to=ctx.user（在场同步钩子）。
+    ON_LEAVE / on_switch_out: 在 battle.py 的 on_switch_out 里清除 mirror_buff_to。
+    """
+    me = ctx.user
+    enemy = ctx.target
+    if not me or not enemy:
+        return
+
+    # ── 入场：复制敌方当前所有增益 ──
+    me.atk_up   = max(me.atk_up,   enemy.atk_up)
+    me.def_up   = max(me.def_up,   enemy.def_up)
+    me.spatk_up = max(me.spatk_up, enemy.spatk_up)
+    me.spdef_up = max(me.spdef_up, enemy.spdef_up)
+    me.speed_up = max(me.speed_up, enemy.speed_up)
+    # 能量取最大值（但不超过上限10）
+    me.energy = min(10, max(me.energy, enemy.energy))
+
+    # ── 设置在场同步钩子 ──
+    # enemy（对手）获得 buff 时，_apply_buff 会读 enemy.ability_state["mirror_buff_to"]
+    # 然后把相同 buff 复制给 me
+    enemy.ability_state["mirror_buff_to"] = me
+    # 自己的 mirror_buff_to 清空（防止两边互相镜像）
+    me.ability_state.pop("mirror_buff_to", None)
+
+
 
 def _h_counter_success_double_damage(tag: EffectTag, ctx: Ctx) -> None:
     """COUNTER_SUCCESS_DOUBLE_DAMAGE: 应对成功后下一次伤害翻倍"""
@@ -1749,12 +1796,13 @@ def _h_auto_switch_after_action(tag: EffectTag, ctx: Ctx) -> None:
 
 def _h_team_synergy_bug_swarm_attack(tag: EffectTag, ctx: Ctx) -> None:
     """TEAM_SYNERGY_BUG_SWARM_ATTACK: 虫群突袭 - +15% stats per other bug"""
-    if not ctx.user or not ctx.battle:
+    if not ctx.user or not ctx.state:
         return
     # Count bugs in team (excluding self)
+    user_team = ctx.state.team_a if ctx.team == "a" else ctx.state.team_b
     bug_count = 0
-    for mon in ctx.battle.user_team:
-        if mon and mon != ctx.user and mon.type1 == 9 or mon.type2 == 9:  # 9 = Bug type
+    for mon in user_team:
+        if mon and mon != ctx.user and (mon.type1 == 9 or mon.type2 == 9):  # 9 = Bug type
             bug_count += 1
     bonus_pct = tag.params.get("bonus_pct", 0.15)
     multiplier = 1.0 + (bonus_pct * bug_count)
@@ -1765,11 +1813,12 @@ def _h_team_synergy_bug_swarm_attack(tag: EffectTag, ctx: Ctx) -> None:
 
 def _h_team_synergy_bug_swarm_inspire(tag: EffectTag, ctx: Ctx) -> None:
     """TEAM_SYNERGY_BUG_SWARM_INSPIRE: 虫群鼓舞 - +10% stats per other bug"""
-    if not ctx.user or not ctx.battle:
+    if not ctx.user or not ctx.state:
         return
     # Count bugs in team (excluding self)
+    user_team = ctx.state.team_a if ctx.team == "a" else ctx.state.team_b
     bug_count = 0
-    for mon in ctx.battle.user_team:
+    for mon in user_team:
         if mon and mon != ctx.user and (mon.type1 == 9 or mon.type2 == 9):
             bug_count += 1
     bonus_pct = tag.params.get("bonus_pct", 0.1)
@@ -1781,10 +1830,11 @@ def _h_team_synergy_bug_swarm_inspire(tag: EffectTag, ctx: Ctx) -> None:
 
 def _h_team_synergy_brave_if_bugs(tag: EffectTag, ctx: Ctx) -> None:
     """TEAM_SYNERGY_BRAVE_IF_BUGS: 壮胆 - +50% attack if bugs in team"""
-    if not ctx.user or not ctx.battle:
+    if not ctx.user or not ctx.state:
         return
     # Check if any other bug in team
-    has_bugs = any(mon and mon != ctx.user and (mon.type1 == 9 or mon.type2 == 9) for mon in ctx.battle.user_team)
+    user_team = ctx.state.team_a if ctx.team == "a" else ctx.state.team_b
+    has_bugs = any(mon and mon != ctx.user and (mon.type1 == 9 or mon.type2 == 9) for mon in user_team)
     if has_bugs:
         bonus_pct = tag.params.get("bonus_pct", 0.5)
         if "stat_multiplier" not in ctx.result:
@@ -1847,10 +1897,11 @@ def _h_stat_scale_meteor_marks_per_turn(tag: EffectTag, ctx: Ctx) -> None:
 
 def _h_mark_power_per_meteor(tag: EffectTag, ctx: Ctx) -> None:
     """MARK_POWER_PER_METEOR: 坠星/观星 - +15% power per meteor mark"""
-    if not ctx.enemy or not ctx.battle:
+    if not ctx.target:
         return
-    # Get meteor mark count on enemy
-    meteor_count = ctx.enemy.marks.get("meteor", 0) if ctx.enemy.marks else 0
+    # Get meteor mark count on target (enemy)
+    enemy_marks = ctx.state.marks_b if ctx.team == "a" else ctx.state.marks_a
+    meteor_count = enemy_marks.get("meteor_mark", 0)
     bonus_pct_per_mark = tag.params.get("bonus_pct_per_mark", 0.15)
     multiplier = 1.0 + (bonus_pct_per_mark * meteor_count)
     if "power_multiplier" not in ctx.result:
@@ -1872,9 +1923,9 @@ def _h_mark_stack_no_replace(tag: EffectTag, ctx: Ctx) -> None:
 
 def _h_mark_stack_debuffs(tag: EffectTag, ctx: Ctx) -> None:
     """MARK_STACK_DEBUFFS: 灰色肖像 - Stack enemy debuffs +3"""
-    if ctx.enemy and ctx.enemy.ability_state is not None:
+    if ctx.target and ctx.target.ability_state is not None:
         stack_bonus = tag.params.get("stack_bonus", 3)
-        ctx.enemy.ability_state["debuff_stack_bonus"] = stack_bonus
+        ctx.target.ability_state["debuff_stack_bonus"] = stack_bonus
 
 
 def _h_damage_mod_non_stab(tag: EffectTag, ctx: Ctx) -> None:
@@ -1904,11 +1955,11 @@ def _h_damage_mod_non_light(tag: EffectTag, ctx: Ctx) -> None:
 
 def _h_damage_mod_non_weakness(tag: EffectTag, ctx: Ctx) -> None:
     """DAMAGE_MOD_NON_WEAKNESS: 绒粉星光 - +100% vs non-weakness"""
-    if not ctx.user or not ctx.skill or not ctx.enemy:
+    if not ctx.user or not ctx.skill or not ctx.target:
         return
     from .types import get_type_effectiveness
     # Check effectiveness
-    effectiveness = get_type_effectiveness(ctx.skill.type, ctx.enemy.type1, ctx.enemy.type2)
+    effectiveness = get_type_effectiveness(ctx.skill.type, ctx.target.type1, ctx.target.type2)
     if effectiveness <= 1.0:  # Not super-effective
         bonus_pct = tag.params.get("bonus_pct", 1.0)
         if "power_multiplier" not in ctx.result:
@@ -1918,8 +1969,8 @@ def _h_damage_mod_non_weakness(tag: EffectTag, ctx: Ctx) -> None:
 
 def _h_damage_mod_pollutant_blood(tag: EffectTag, ctx: Ctx) -> None:
     """DAMAGE_MOD_POLLUTANT_BLOOD: 天通地明 - +100% vs pollutant blood (特定敌方血脉)"""
-    if ctx.enemy and ctx.enemy.ability_state is not None:
-        if ctx.enemy.ability_state.get("blood_type") == "pollutant":
+    if ctx.target and ctx.target.ability_state is not None:
+        if ctx.target.ability_state.get("blood_type") == "pollutant":
             bonus_pct = tag.params.get("bonus_pct", 1.0)
             if "power_multiplier" not in ctx.result:
                 ctx.result["power_multiplier"] = 1.0
@@ -1928,8 +1979,8 @@ def _h_damage_mod_pollutant_blood(tag: EffectTag, ctx: Ctx) -> None:
 
 def _h_damage_mod_leader_blood(tag: EffectTag, ctx: Ctx) -> None:
     """DAMAGE_MOD_LEADER_BLOOD: 月光审判 - +100% vs leader blood (特定敌方血脉)"""
-    if ctx.enemy and ctx.enemy.ability_state is not None:
-        if ctx.enemy.ability_state.get("blood_type") == "leader":
+    if ctx.target and ctx.target.ability_state is not None:
+        if ctx.target.ability_state.get("blood_type") == "leader":
             bonus_pct = tag.params.get("bonus_pct", 1.0)
             if "power_multiplier" not in ctx.result:
                 ctx.result["power_multiplier"] = 1.0
@@ -2928,6 +2979,7 @@ _HANDLERS: Dict[E, Callable] = {
     E.DELAYED_REVIVE:               _h_delayed_revive,
     E.COPY_SWITCH_STATE:            _h_copy_switch_state,
     E.COST_INVERT:                  _h_cost_invert,
+    E.MIRROR_ENEMY_BUFFS:           _h_mirror_enemy_buffs,
     # ── TIER 1 特性原语 ──
     E.COUNTER_SUCCESS_DOUBLE_DAMAGE:     _h_counter_success_double_damage,
     E.COUNTER_SUCCESS_BUFF_PERMANENT:    _h_counter_success_buff_permanent,
@@ -3071,6 +3123,7 @@ _ABILITY_HANDLER_OVERRIDES: Dict[E, Callable] = {
     E.DELAYED_REVIVE:            _h_delayed_revive,
     E.COPY_SWITCH_STATE:         _h_copy_switch_state,
     E.COST_INVERT:               _h_cost_invert,
+    E.MIRROR_ENEMY_BUFFS:        _h_mirror_enemy_buffs,
     # ── TIER 1 特性原语（能力模式） ──
     E.COUNTER_SUCCESS_DOUBLE_DAMAGE:     _h_counter_success_double_damage,
     E.COUNTER_SUCCESS_BUFF_PERMANENT:    _h_counter_success_buff_permanent,

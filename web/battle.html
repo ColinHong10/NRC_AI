@@ -342,15 +342,25 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg-dark);color
 @keyframes float-up{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-36px)}}
 @keyframes slide-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes entry-bounce{0%{transform:translateY(20px) scale(.85);opacity:0}60%{transform:translateY(-5px) scale(1.04)}100%{transform:translateY(0) scale(1);opacity:1}}
+@keyframes switch-out-a{0%{transform:translateX(-50%) scale(1);opacity:1}100%{transform:translateX(-50%) translateX(-30px) scale(.7);opacity:0}}
+@keyframes switch-out-b{0%{transform:translateX(50%) scale(1);opacity:1}100%{transform:translateX(50%) translateX(30px) scale(.7);opacity:0}}
+@keyframes switch-in-a{0%{transform:translateX(-50%) translateX(30px) scale(.7);opacity:0}60%{transform:translateX(-50%) translateX(-4px) scale(1.06)}100%{transform:translateX(-50%) translateX(0) scale(1);opacity:1}}
+@keyframes switch-in-b{0%{transform:translateX(50%) translateX(-30px) scale(.7);opacity:0}60%{transform:translateX(50%) translateX(4px) scale(1.06)}100%{transform:translateX(50%) translateX(0) scale(1);opacity:1}}
 .slot-atk-a{animation:atk-a .44s ease}
 .slot-atk-b{animation:atk-b .44s ease}
 .sprite-hit{animation:hit-flash .5s ease}
 .sprite-faint{animation:faint-drop .6s ease forwards}
 .shield-pulse-a{animation:shield-pulse .5s ease}
 .shield-pulse-b{animation:shield-b-pulse .5s ease}
+.sprite-switch-out-a{animation:switch-out-a .35s ease forwards}
+.sprite-switch-out-b{animation:switch-out-b .35s ease forwards}
+.sprite-switch-in-a{animation:switch-in-a .5s cubic-bezier(.34,1.56,.64,1) forwards}
+.sprite-switch-in-b{animation:switch-in-b .5s cubic-bezier(.34,1.56,.64,1) forwards}
 .float-dmg{position:absolute;font-size:20px;font-weight:900;pointer-events:none;animation:float-up .9s ease forwards;
   text-shadow:0 0 4px #fff,0 0 4px #fff,1px 1px 0 #fff,-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff;
-  z-index:20}
+  z-index:20;color:#e53935}
+.float-heal{color:#4ade80 !important;
+  text-shadow:0 0 4px #000,0 0 4px #000,1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000}
 .sprite-entry{animation:entry-bounce .55s cubic-bezier(.34,1.56,.64,1) forwards}
 </style>
 </head>
@@ -615,7 +625,7 @@ function renderState(s){
     setWait(false);
     enableActions(false);
     renderSkills(null, null);
-    renderForceSwitchPanel(s.team_a, s.current_a, pb);
+    renderForceSwitchPanel(s.team_a, s.current_a, pb, s.force_switch_reason || 'force_switch');
   } else if(s.waiting_for_player && !s.game_over){
     myTurn=true;
     setWait(false);
@@ -823,18 +833,30 @@ function renderSwitchPanel(teamA, curIdx, enemyPoke){
   panel.appendChild(back);
 }
 
-function renderForceSwitchPanel(teamA, curIdx, enemyPoke){
+function renderForceSwitchPanel(teamA, curIdx, enemyPoke, reason){
   document.getElementById('switch-panel').classList.add('open');
   const panel=document.getElementById('switch-panel');
   panel.innerHTML='';
 
   const title=document.createElement('div');
   title.style.cssText='color:var(--yellow);font-weight:700;padding:6px 4px;font-size:12px';
-  title.textContent='🔄 应对成功！选择换上的精灵（不占回合）';
+  if(reason==='fainted'){
+    title.textContent='💀 精灵倒下！选择下一只上场精灵';
+  } else {
+    title.textContent='🔄 被迫脱离！选择换上的精灵（不占回合）';
+  }
   panel.appendChild(title);
 
+  // 强制换人：显示所有存活精灵，但排除当前占位在场的精灵（curIdx）
+  const alive = teamA.filter((p,i) => !p.is_fainted && i !== curIdx);
+  if(alive.length === 0){
+    // 只剩一只且就是 curIdx，自动确认（无需选）
+    doForceSwitch(curIdx);
+    return;
+  }
+
   teamA.forEach((p,i)=>{
-    if(i===curIdx || p.is_fainted) return;
+    if(p.is_fainted || i === curIdx) return;
     const card=document.createElement('button');
     card.className='sw-card';
     card.innerHTML=_swCardHtml(p, i, true);
@@ -908,22 +930,69 @@ function startBattle(){
 function playEvents(events){
   let delay = 0;
   events.forEach(ev=>{
+    const dur = evDuration(ev);
     setTimeout(()=>{
-      if(ev.type==='hit')    playHit(ev.side, ev.dmg, ev.eff);
-      if(ev.type==='shield') playShield(ev.side);
-      if(ev.type==='faint')  playFaint(ev.side);
+      if(ev.type==='switch_out') playSwitchOut(ev.side);
+      if(ev.type==='switch_in')  playSwitchIn(ev.side, ev.icon_url, ev.name);
+      if(ev.type==='hit')        playHit(ev.side, ev.dmg, ev.eff, ev.atk_anim);
+      if(ev.type==='shield')     playShield(ev.side);
+      if(ev.type==='faint')      playFaint(ev.side);
+      if(ev.type==='heal')       playHeal(ev.side, ev.amount);
     }, delay);
-    delay += 200;
+    delay += dur;
   });
 }
 
-function playHit(side, dmg, eff){
+function evDuration(ev){
+  if(ev.type==='switch_out') return 380;
+  if(ev.type==='switch_in')  return 540;
+  if(ev.type==='hit')        return 520;
+  if(ev.type==='shield')     return 300;
+  if(ev.type==='faint')      return 660;
+  if(ev.type==='heal')       return 400;
+  return 200;
+}
+
+function playSwitchOut(side){
+  const container = document.getElementById(`sprite-${side}`);
+  const el = container.querySelector('img,.sprite-emoji');
+  if(!el) return;
+  el.classList.remove('sprite-switch-out-a','sprite-switch-out-b','sprite-switch-in-a','sprite-switch-in-b');
+  void el.offsetWidth;
+  el.classList.add(`sprite-switch-out-${side}`);
+}
+
+function playSwitchIn(side, iconUrl, name){
+  const container = document.getElementById(`sprite-${side}`);
+  // 重建精灵图元素（新精灵）
+  container.innerHTML='';
+  let el;
+  if(iconUrl){
+    el = document.createElement('img');
+    el.src = iconUrl;
+    el.alt = name;
+    el.className = `sprite-img sprite-switch-in-${side}`;
+    el.onerror = ()=>{ el.replaceWith(Object.assign(document.createElement('span'),{
+      className:`sprite-emoji sprite-switch-in-${side}`, textContent: emoji(name)
+    })); };
+  } else {
+    el = document.createElement('span');
+    el.className = `sprite-emoji sprite-switch-in-${side}`;
+    el.textContent = emoji(name);
+  }
+  container.appendChild(el);
+}
+
+function playHit(side, dmg, eff, atkAnim){
   const atkSide = side==='a'?'b':'a';
   const atkSlot = document.getElementById(`slot-${atkSide}`);
   const spriteEl = document.getElementById(`sprite-${side}`).querySelector('img,.sprite-emoji');
 
-  atkSlot.classList.add(`slot-atk-${atkSide}`);
-  setTimeout(()=>atkSlot.classList.remove('slot-atk-a','slot-atk-b'),450);
+  // 只有攻击类技能才播放冲刺动画
+  if(atkAnim !== false){
+    atkSlot.classList.add(`slot-atk-${atkSide}`);
+    setTimeout(()=>atkSlot.classList.remove('slot-atk-a','slot-atk-b'),450);
+  }
 
   if(spriteEl){ spriteEl.classList.add('sprite-hit'); setTimeout(()=>spriteEl.classList.remove('sprite-hit'),510); }
 
@@ -959,6 +1028,20 @@ function playShield(side){
 function playFaint(side){
   const spriteEl = document.getElementById(`sprite-${side}`).querySelector('img,.sprite-emoji');
   if(spriteEl){ spriteEl.classList.add('sprite-faint'); setTimeout(()=>spriteEl.classList.remove('sprite-faint'),620); }
+}
+
+function playHeal(side, amount){
+  if(!amount || amount <= 0) return;
+  const arena = document.getElementById('arena');
+  const slot  = document.getElementById(`slot-${side}`);
+  const fl    = document.createElement('div');
+  fl.className = 'float-dmg float-heal';
+  fl.textContent = `+${amount}`;
+  const sr = slot.getBoundingClientRect(), ar = arena.getBoundingClientRect();
+  fl.style.left = (sr.left - ar.left + sr.width / 2 - 18) + 'px';
+  fl.style.top  = (sr.top  - ar.top  + 5) + 'px';
+  arena.appendChild(fl);
+  setTimeout(() => fl.remove(), 950);
 }
 
 // ══════════════════════════════

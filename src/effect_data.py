@@ -1684,9 +1684,9 @@ ABILITY_EFFECTS = {
         AE(Timing.PASSIVE, [T(E.ENEMY_TECH_TOTAL_POWER, bonus_pct_per_cost=0.1)]),  # 近似
     ],
 
-    # 衡量 (1只): 入场时复制敌方增益
+    # 衡量 (公平鸽): 入场时复制敌方增益；在场时敌方获得增益自己也同步获得
     "衡量": [
-        AE(Timing.ON_ENTER, [T(E.COPY_SWITCH_STATE)]),  # 复用贪婪的复制状态原语
+        AE(Timing.ON_ENTER, [T(E.MIRROR_ENEMY_BUFFS)]),
     ],
 
     # 扫拖一体 (2只): 回合结束驱散敌方1层印记

@@ -128,6 +128,7 @@ class E(Enum):
     DELAYED_REVIVE = auto()                 # 不朽: 力竭后延迟复活 params: {"turns": 3}
     COPY_SWITCH_STATE = auto()              # 贪婪: 敌方换人时复制状态 params: {}
     COST_INVERT = auto()                    # 对流: 能耗增减反转（被动标记）params: {}
+    MIRROR_ENEMY_BUFFS = auto()             # 公平鸽「衡量」: 入场时复制敌方增益+在场时同步 params: {}
 
     # ── 复合 / 特殊 ──
     REPLAY_AGILITY = auto()          # 重放迅捷技能 params: {} (疾风连袭)

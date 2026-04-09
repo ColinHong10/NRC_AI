@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>洛克王国 · 战斗规则手册</title>
+<style>
+:root{
+  --bg:#0a0e1a;--bg2:#111827;--bg3:#1a2235;--border:#2a3a55;
+  --accent:#4fc3f7;--green:#4ade80;--red:#f87171;--yellow:#fbbf24;
+  --orange:#fb923c;--purple:#c084fc;--pink:#f472b6;--text:#e2e8f0;--dim:#94a3b8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+/* ── 顶栏 ── */
+header{background:linear-gradient(90deg,#0a1628,#111e3a);border-bottom:1px solid var(--border);
+  padding:14px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+header h1{font-size:16px;font-weight:700;color:var(--accent);letter-spacing:.5px}
+.subtitle{font-size:11px;color:var(--dim)}
+
+/* ── 导航标签 ── */
+nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;
+  display:flex;gap:4px;overflow-x:auto;flex-shrink:0}
+.tab{padding:10px 16px;font-size:12px;font-weight:600;color:var(--dim);cursor:pointer;
+  border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ── 主体 ── */
+#content{max-width:1100px;margin:0 auto;padding:24px}
+.section{display:none}
+.section.active{display:block}
+
+/* ── 区块标题 ── */
+.block{margin-bottom:28px}
+.block-title{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:10px;
+  display:flex;align-items:center;gap:8px}
+.block-title::before{content:'';width:3px;height:14px;background:var(--accent);border-radius:2px}
+
+/* ── 表格 ── */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:var(--bg3);color:var(--dim);font-weight:600;padding:8px 12px;
+   text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid rgba(42,58,85,.5);vertical-align:top;line-height:1.5}
+tr:hover td{background:rgba(79,195,247,.04)}
+.code{font-family:monospace;font-size:11px;color:var(--yellow);background:rgba(251,191,36,.08);
+  padding:1px 5px;border-radius:3px}
+.badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-right:4px}
+.badge-green{background:rgba(74,222,128,.15);color:var(--green);border:1px solid rgba(74,222,128,.3)}
+.badge-red{background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.3)}
+.badge-yellow{background:rgba(251,191,36,.15);color:var(--yellow);border:1px solid rgba(251,191,36,.3)}
+.badge-blue{background:rgba(79,195,247,.15);color:var(--accent);border:1px solid rgba(79,195,247,.3)}
+.badge-purple{background:rgba(192,132,252,.15);color:var(--purple);border:1px solid rgba(192,132,252,.3)}
+.badge-orange{background:rgba(251,146,60,.15);color:var(--orange);border:1px solid rgba(251,146,60,.3)}
+
+/* ── 流程图 ── */
+.flow{display:flex;flex-direction:column;gap:4px}
+.flow-step{display:flex;align-items:flex-start;gap:10px;padding:8px 12px;
+  background:var(--bg3);border-radius:6px;border-left:3px solid var(--border)}
+.flow-step.highlight{border-left-color:var(--accent);background:rgba(79,195,247,.06)}
+.flow-step.warn{border-left-color:var(--yellow)}
+.flow-num{color:var(--accent);font-weight:700;font-size:11px;min-width:18px;margin-top:1px}
+.flow-arrow{text-align:center;color:var(--border);font-size:12px;padding:2px 0}
+
+/* ── 双列 ── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:700px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* ── 小卡片 ── */
+.card{background:var(--bg3);border-radius:8px;padding:14px;border:1px solid var(--border)}
+.card-title{font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;
+  letter-spacing:.6px;margin-bottom:8px}
+.card-val{font-size:22px;font-weight:800;color:var(--accent)}
+.card-desc{font-size:11px;color:var(--dim);margin-top:4px}
+
+/* ── 提示框 ── */
+.tip{padding:8px 12px;border-radius:6px;font-size:11px;margin-bottom:8px;
+     display:flex;align-items:flex-start;gap:8px}
+.tip-icon{font-size:14px;flex-shrink:0;margin-top:1px}
+.tip.info{background:rgba(79,195,247,.08);border:1px solid rgba(79,195,247,.2);color:var(--accent)}
+.tip.warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);color:var(--yellow)}
+.tip.danger{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);color:var(--red)}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🗺️ 洛克王国 · 战斗规则手册</h1>
+    <div class="subtitle">基于代码 battle.py 实际实现提取 · 点击标签页查看各类规则 · 发现错误请直接纠正</div>
+  </div>
+</header>
+
+<nav>
+  <div class="tab active" onclick="show('turn')">⚔️ 回合流程</div>
+  <div class="tab" onclick="show('priority')">⚡ 先后手 &amp; 优先级</div>
+  <div class="tab" onclick="show('damage')">💥 伤害计算</div>
+  <div class="tab" onclick="show('status')">🟣 状态效果</div>
+  <div class="tab" onclick="show('energy')">⚡ 能量系统</div>
+  <div class="tab" onclick="show('switch')">🔄 换人规则</div>
+  <div class="tab" onclick="show('counter')">🛡️ 应对系统</div>
+  <div class="tab" onclick="show('win')">🏆 胜负 &amp; MP</div>
+</nav>
+
+<div id="content">
+
+<!-- ══════════════ 回合流程 ══════════════ -->
+<div id="sec-turn" class="section active">
+  <div class="block">
+    <div class="block-title">完整回合执行顺序（execute_full_turn）</div>
+    <div class="flow">
+      <div class="flow-step highlight"><div class="flow-num">1</div><div>回合开始：触发开局特性（battle_start_effects，只触发一次）</div></div>
+      <div class="flow-step highlight"><div class="flow-num">2</div><div>湿润印记处理：<span class="code">_apply_moisture_mark</span> → 全队技能能耗 -N（印记层数）</div></div>
+      <div class="flow-step highlight"><div class="flow-num">3</div><div>回合开始特性逻辑（冷却递减、传动等预处理）</div></div>
+      <div class="flow-step"><div class="flow-num">4</div><div><b>应对检测</b>：判断 A/B 是否对对方技能有应对效果，决定先后手（见「应对系统」）</div></div>
+      <div class="flow-step highlight"><div class="flow-num">5</div><div><b>先手行动</b>：<span class="code">_execute_with_counter</span> → 含伤害/状态/应对结算</div></div>
+      <div class="flow-step warn"><div class="flow-num">6</div><div>检查倒地 → 扣 MP（<span class="code">_check_fainted_and_deduct_mp</span>）→ 触发 ON_FAINT 特性</div></div>
+      <div class="flow-step warn"><div class="flow-num">7</div><div>死亡换人 / 被动换人（<span class="code">auto_switch</span>）→ 若玩家需选人，弹出选人面板（异步等待）</div></div>
+      <div class="flow-step"><div class="flow-num">8</div><div>检查胜负 → 如已分出胜负则结束回合</div></div>
+      <div class="flow-step highlight"><div class="flow-num">9</div><div><b>后手行动</b>：同步骤5</div></div>
+      <div class="flow-step warn"><div class="flow-num">10</div><div>检查倒地 → 扣 MP → 换人 → 检查胜负</div></div>
+      <div class="flow-step highlight"><div class="flow-num">11</div><div><b>回合结束效果</b>（<span class="code">turn_end_effects</span>）</div></div>
+      <div class="flow-step"><div class="flow-num">12</div><div>检查倒地 → 扣 MP → 换人 → 回合数 +1</div></div>
+    </div>
+  </div>
+
+  <div class="block">
+    <div class="block-title">回合结束效果顺序（turn_end_effects）</div>
+    <div class="flow">
+      <div class="flow-step"><div class="flow-num">1</div><div>触发 ON_TURN_END 特性（双方）</div></div>
+      <div class="flow-step"><div class="flow-num">2</div><div>触发 PASSIVE 特性（煤渣草灼烧不衰减检测）</div></div>
+      <div class="flow-step highlight"><div class="flow-num">3</div><div><b>中毒</b>：<span class="code">HP × 3% × 层数</span>（不衰减）</div></div>
+      <div class="flow-step highlight"><div class="flow-num">4</div><div><b>灼烧</b>：<span class="code">HP × 2% × 层数</span>，之后层数 ÷2（最少减1层）；煤渣草在场则层数不减反加</div></div>
+      <div class="flow-step highlight"><div class="flow-num">5</div><div><b>冻伤</b>：每回合累加 <span class="code">HP÷12</span> 不可恢复伤害（侵蚀最大HP上限）</div></div>
+      <div class="flow-step highlight"><div class="flow-num">6</div><div><b>寄生</b>：<span class="code">HP × 8% × 层数</span>，该值转给敌方恢复</div></div>
+      <div class="flow-step highlight"><div class="flow-num">7</div><div><b>星陨</b>：倒计时 -1；到0引爆：<span class="code">(敌方魔攻/己方魔防) × 30 × 层数 × 0.9</span></div></div>
+      <div class="flow-step"><div class="flow-num">8</div><div>天气效果（沙暴 1/16 HP·雪天冻结2层）→ 天气回合 -1</div></div>
+      <div class="flow-step"><div class="flow-num">9</div><div>技能冷却 -1，临时能耗修改 -1 回合</div></div>
+      <div class="flow-step"><div class="flow-num">10</div><div>印记回合结束效果（湿润/中毒印记/龙噬/荆刺等）</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 先后手 ══════════════ -->
+<div id="sec-priority" class="section">
+  <div class="block">
+    <div class="block-title">先后手判定逻辑（get_priority + _compare_action_order）</div>
+    <table>
+      <tr><th>行动类型</th><th>优先级值</th><th>说明</th></tr>
+      <tr><td>换人 <span class="badge badge-green">最高</span></td><td class="code">+99</td><td>换人永远优先于技能和聚能</td></tr>
+      <tr><td>带先手加成技能</td><td class="code">skill.priority_mod + pokemon.priority_stage</td><td>高优先级技能（如迅捷）</td></tr>
+      <tr><td>普通技能</td><td class="code">0</td><td>速度高者先手</td></tr>
+      <tr><td>聚能</td><td class="code">0</td><td>与普通技能同优先级，看速度</td></tr>
+    </table>
+  </div>
+
+  <div class="block">
+    <div class="block-title">速度决胜规则</div>
+    <div class="flow">
+      <div class="flow-step highlight"><div class="flow-num">①</div><div>比较 <b>优先级（priority_mod）</b>：高者先手</div></div>
+      <div class="flow-step highlight"><div class="flow-num">②</div><div>优先级相同 → 比较 <b>当前速度（effective_speed）</b>：高者先手</div></div>
+      <div class="flow-step warn"><div class="flow-num">③</div><div>速度相同 → <b>随机决定</b>（50/50）</div></div>
+    </div>
+  </div>
+
+  <div class="block">
+    <div class="block-title">应对对先后手的影响</div>
+    <div class="tip info"><div class="tip-icon">ℹ️</div><div>应对<b>无视速度</b>：A 应对 B 的技能 → B 先释放（被应对方先动），A 的应对效果在 B 释放过程中同步结算。不是"A 先动"，而是"B 先动但 A 的防御效果已就位"。</div></div>
+    <table>
+      <tr><th>场景</th><th>执行顺序</th></tr>
+      <tr><td>A 应对 B，B 不应对 A</td><td>B 先动（释放技能），A 的应对效果即时结算，A 后动</td></tr>
+      <tr><td>B 应对 A，A 不应对 B</td><td>A 先动，B 的应对效果即时结算，B 后动</td></tr>
+      <tr><td>双方互相应对 / 无人应对</td><td>正常先后手（优先级 → 速度 → 随机）</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════ 伤害计算 ══════════════ -->
+<div id="sec-damage" class="section">
+  <div class="block">
+    <div class="block-title">基础伤害公式（DamageCalculator）</div>
+    <div class="tip info"><div class="tip-icon">📐</div>
+      <div><b>物理伤害</b> = <span class="code">(攻击方 effective_atk / 防守方 effective_def) × 技能威力 × 连击数 × 属性克制 × 0.9随机</span><br>
+      <b>魔法伤害</b> = <span class="code">(攻击方 effective_spatk / 防守方 effective_spdef) × ...</span></div>
+    </div>
+  </div>
+
+  <div class="block">
+    <div class="block-title">属性修正计算</div>
+    <table>
+      <tr><th>修正值</th><th>公式</th></tr>
+      <tr><td>有效物攻</td><td class="code">base_atk × (1 + atk_up) / max(0.1, 1 + atk_down)</td></tr>
+      <tr><td>有效物防</td><td class="code">base_def × (1 + def_up) / max(0.1, 1 + def_down)</td></tr>
+      <tr><td>有效速度</td><td class="code">base_spd × (1 + speed_up) / max(0.1, 1 + speed_down)</td></tr>
+    </table>
+  </div>
+
+  <div class="block">
+    <div class="block-title">属性克制倍率</div>
+    <table>
+      <tr><th>情况</th><th>伤害倍率</th><th>前端显示</th></tr>
+      <tr><td>克制（super effective）</td><td class="code">×2.0+</td><td><span class="badge badge-red">克制！</span></td></tr>
+      <tr><td>普通</td><td class="code">×1.0</td><td>无标注</td></tr>
+      <tr><td>抵抗（not very effective）</td><td class="code">≤×0.5</td><td><span class="badge badge-blue">抵抗</span></td></tr>
+    </table>
+  </div>
+
+  <div class="block">
+    <div class="block-title">吸血（LIFE_DRAIN）</div>
+    <div class="tip info"><div class="tip-icon">🩸</div>
+      <div>吸血在<b>造成伤害的同一回合</b>触发（非回合结束）。<br>
+      回血量 = <span class="code">实际造成伤害 × life_drain_pct</span>（蝙蝠技能 = 100%）<br>
+      动画：攻击命中后播放绿色 <span class="badge badge-green">+N</span> 浮动数字</div>
+    </div>
+  </div>
+
+  <div class="block">
+    <div class="block-title">减伤（DAMAGE_REDUCTION）</div>
+    <div class="tip warn"><div class="tip-icon">⚠️</div>
+      <div>减伤是<b>防御方技能的被动效果</b>，在被攻击时生效（ON_COUNTER 之前判定）。<br>
+      减伤量直接乘在伤害上，如火焰护盾 = 70% 减伤 → 实际受 30% 伤害</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 状态效果 ══════════════ -->
+<div id="sec-status" class="section">
+  <div class="block">
+    <div class="block-title">回合结束状态伤害（每回合末结算）</div>
+    <table>
+      <tr><th>状态</th><th>每回合伤害/效果</th><th>衰减规则</th><th>换人是否清除</th></tr>
+      <tr>
+        <td><span class="badge badge-purple">中毒</span> poison</td>
+        <td class="code">HP × 3% × 层数</td>
+        <td>不衰减</td>
+        <td><span class="badge badge-red">不清除</span></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-orange">灼烧</span> burn</td>
+        <td class="code">HP × 2% × 层数</td>
+        <td>每回合层数 ÷2，最少 -1 层；煤渣草对手在场则层数增长</td>
+        <td><span class="badge badge-red">不清除</span></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">冻伤</span> freeze</td>
+        <td>每回合累加 <span class="code">HP÷12</span> 的不可恢复伤害（从最大HP上限侵蚀）</td>
+        <td>不衰减，直到倒下</td>
+        <td><span class="badge badge-red">不清除</span></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-green">寄生</span> leech</td>
+        <td class="code">HP × 8% × 层数</td>
+        <td>不衰减</td>
+        <td><span class="badge badge-red">不清除</span></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-yellow">星陨</span> meteor</td>
+        <td>倒计时归零时引爆：<span class="code">(敌方魔攻÷己方魔防) × 30层 × 0.9</span></td>
+        <td>倒计时每回合 -1</td>
+        <td>-</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="block">
+    <div class="block-title">萌化系统（cute_stacks）</div>
+    <table>
+      <tr><th>规则</th><th>说明</th></tr>
+      <tr><td>萌化层数上限</td><td>默认 3 层；无忧无虑特性 = 无限（999）</td></tr>
+      <tr><td>换人</td><td><span class="badge badge-red">不清除</span> 萌化层数</td></tr>
+      <tr><td>触发条件</td><td>使用含 CUTE_* 效果的技能时获得层数，不同技能有不同条件</td></tr>
+    </table>
+  </div>
+
+  <div class="block">
+    <div class="block-title">状态何时被清除？</div>
+    <div class="tip danger"><div class="tip-icon">❗</div>
+      <div>中毒/灼烧/寄生/冻伤<b>换人不清除</b>，只能通过主动清除技能（DISPEL_DEBUFFS）或特殊效果消除。<br>
+      属性修正（atk_up/def_up 等）<b>换人时清零</b>。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 能量系统 ══════════════ -->
+<div id="sec-energy" class="section">
+  <div class="block">
+    <div class="block-title">能量基础规则</div>
+    <div class="grid3">
+      <div class="card"><div class="card-title">初始能量</div><div class="card-val">10</div><div class="card-desc">入场时满能量</div></div>
+      <div class="card"><div class="card-title">聚能回复</div><div class="card-val">+5</div><div class="card-desc">使用聚能（action=-1）时回复</div></div>
+      <div class="card"><div class="card-title">能量上限</div><div class="card-val">10</div><div class="card-desc">超出无效（gain_energy 有上限）</div></div>
+    </div>
+  </div>
+
+  <div class="block">
+    <div class="block-title">能量不足时的行为</div>
+    <div class="flow">
+      <div class="flow-step warn"><div class="flow-num">①</div><div>技能需要能量 &gt; 当前能量 → 尝试扣 HP 补差</div></div>
+      <div class="flow-step warn"><div class="flow-num">②</div><div>HP 够 → 用 HP 补差（<span class="code">缺少能量 × HP×5%</span>），执行技能</div></div>
+      <div class="flow-step warn"><div class="flow-num">③</div><div>HP 不够 → <b>退回聚能逻辑</b>：回复 +5 能量，不执行技能</div></div>
+    </div>
+  </div>
+
+  <div class="block">
+    <div class="block-title">换人与能量</div>
+    <div class="tip info"><div class="tip-icon">🔄</div>
+      <div>换人<b>不清除能量</b>（能量随精灵本体保留）。<br>
+      公平鸽「衡量」入场时：<span class="code">energy = min(10, max(自身, 敌方))</span> → 复制敌方能量</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 换人规则 ══════════════ -->
+<div id="sec-switch" class="section">
+  <div class="block">
+    <div class="block-title">换人类型</div>
+    <table>
+      <tr><th>类型</th><th>触发</th><th>优先级</th><th>玩家能否自选</th></tr>
+      <tr>
+        <td><span class="badge badge-blue">主动换人</span></td>
+        <td>玩家点击换人按钮</td>
+        <td class="code">+99（高于所有技能）</td>
+        <td>✅ 可选任意存活精灵（除当前在场）</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-yellow">死亡换人</span></td>
+        <td>精灵 HP≤0 倒下</td>
+        <td>回合内即时处理（先/后手行动后各检查一次）</td>
+        <td>✅ 玩家弹出选人面板（排除倒下那只）；AI随机选</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-orange">被迫脱离</span></td>
+        <td>吓退应对成功 / 泡沫幻影等 FORCE_SWITCH</td>
+        <td>技能执行完后立即处理</td>
+        <td>✅ 玩家弹出选人面板（候选 = 存活且非当前）；AI随机</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="block">
+    <div class="block-title">换人时保留与清除的内容</div>
+    <table>
+      <tr><th>内容</th><th>换人是否保留</th></tr>
+      <tr><td>HP</td><td><span class="badge badge-green">保留</span></td></tr>
+      <tr><td>能量</td><td><span class="badge badge-green">保留</span></td></tr>
+      <tr><td>中毒/灼烧/寄生/冻伤层数</td><td><span class="badge badge-green">保留</span></td></tr>
+      <tr><td>萌化层数</td><td><span class="badge badge-green">保留</span></td></tr>
+      <tr><td>属性修正（atk_up/def_up 等）</td><td><span class="badge badge-red">清除</span></td></tr>
+      <tr><td>威力乘数（power_multiplier）</td><td><span class="badge badge-red">清除</span></td></tr>
+      <tr><td>临时能耗修改</td><td><span class="badge badge-red">清除</span></td></tr>
+      <tr><td>蓄力状态</td><td><span class="badge badge-red">清除</span></td></tr>
+    </table>
+  </div>
+
+  <div class="block">
+    <div class="block-title">换人后的入场处理</div>
+    <div class="flow">
+      <div class="flow-step"><div class="flow-num">1</div><div>触发印记入场效果（降灵/荆刺/蓄电）</div></div>
+      <div class="flow-step"><div class="flow-num">2</div><div>触发迅捷入场技能（AGILITY 标记的技能自动释放）</div></div>
+      <div class="flow-step"><div class="flow-num">3</div><div>触发 ON_ENTER 特性（守护者/公平鸽衡量/系统发育等）</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 应对系统 ══════════════ -->
+<div id="sec-counter" class="section">
+  <div class="block">
+    <div class="block-title">应对触发条件</div>
+    <table>
+      <tr><th>应对类型</th><th>触发条件</th><th>代码标识</th></tr>
+      <tr><td>应对攻击</td><td>对方使用物理/魔法技能</td><td class="code">ON_COUNTER, category="attack"</td></tr>
+      <tr><td>应对防御</td><td>对方使用防御技能</td><td class="code">ON_COUNTER, category="defense"</td></tr>
+      <tr><td>应对变化</td><td>对方使用变化/状态技能</td><td class="code">ON_COUNTER, category="status"</td></tr>
+    </table>
+  </div>
+
+  <div class="block">
+    <div class="block-title">应对成功的额外效果（部分技能）</div>
+    <table>
+      <tr><th>效果</th><th>说明</th></tr>
+      <tr><td><span class="badge badge-red">INTERRUPT 打断</span></td><td>对方技能被打断，不生效（地刺等）</td></tr>
+      <tr><td><span class="badge badge-orange">FORCE_SWITCH 脱离</span></td><td>应对成功后<b>己方</b>主动脱离（泡沫幻影等）</td></tr>
+      <tr><td><span class="badge badge-orange">FORCE_ENEMY_SWITCH 逼退</span></td><td>应对成功后<b>对方</b>被迫脱离（吓退等）</td></tr>
+      <tr><td><span class="badge badge-purple">DAMAGE 反弹</span></td><td>以对方技能威力造成伤害</td></tr>
+      <tr><td><span class="badge badge-green">BURN/POISON 状态</span></td><td>附加状态给对方（火焰护盾 = 应对攻击后对方灼烧4层）</td></tr>
+    </table>
+    <div class="tip danger" style="margin-top:8px"><div class="tip-icon">❗</div>
+      <div><b>脱离效果只在应对成功时触发</b>（有效果的防御技能判定通过），应对失败（如敌方使用变化技能但己方只应对攻击）不触发脱离。</div>
+    </div>
+  </div>
+
+  <div class="block">
+    <div class="block-title">聚能能否被打断？</div>
+    <div class="tip warn"><div class="tip-icon">⚠️</div>
+      <div>聚能<b>可以被打断</b>：若对方技能应对中有 <span class="code">INTERRUPT</span> tag，在聚能执行前检查 → 打断则聚能不回能量。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ 胜负 ══════════════ -->
+<div id="sec-win" class="section">
+  <div class="block">
+    <div class="block-title">胜负判定 &amp; MP 系统</div>
+    <div class="grid2">
+      <div class="card"><div class="card-title">初始 MP</div><div class="card-val">4</div><div class="card-desc">双方各 4 点斗志</div></div>
+      <div class="card"><div class="card-title">扣 MP 条件</div><div class="card-val">-1</div><div class="card-desc">己方精灵倒下 → MP -1</div></div>
+    </div>
+    <div class="tip danger" style="margin-top:12px"><div class="tip-icon">❗</div>
+      <div><b>MP ≤ 0 立即判负</b>（check_winner）。<br>
+      先手精灵倒下后，若 MP ≤ 0 则直接结束，<b>后手不再行动</b>。</div>
+    </div>
+  </div>
+
+  <div class="block">
+    <div class="block-title">MP 检查时机（每次都检查）</div>
+    <div class="flow">
+      <div class="flow-step warn"><div class="flow-num">①</div><div>先手行动结束后</div></div>
+      <div class="flow-step warn"><div class="flow-num">②</div><div>后手行动结束后</div></div>
+      <div class="flow-step warn"><div class="flow-num">③</div><div>回合结束效果（中毒/灼烧等状态伤害）后</div></div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+function show(id){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

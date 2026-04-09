@@ -16,7 +16,8 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from src.skill_db import load_skills
 from src.models import BattleState, StatusType
-from src.effect_models import E
+from src.effect_models import E, Timing
+from src.effect_engine import EffectExecutor
 from src.battle import (
     TeamBuilder, execute_full_turn, check_winner,
     auto_switch, get_actions
@@ -400,17 +401,18 @@ def _diff_to_logs(before: dict, after: dict, state: BattleState) -> List[str]:
     if mp_b_after < mp_b_before:
         logs.append(f"  💔 AI方 MP -{mp_b_before - mp_b_after} → {mp_b_after}")
 
-    # 换人
+    # 换人（换人优先级最高，提到结算日志最前以反映真实执行顺序）
+    switch_logs = []
     ca_before = before.get("current_a")
     ca_after  = after.get("current_a")
     cb_before = before.get("current_b")
     cb_after  = after.get("current_b")
     if ca_before != ca_after and ca_after is not None:
-        logs.append(f"  🔄 你方 换上 {pname('a', ca_after)}")
+        switch_logs.append(f"  🔄 你方 换上 {pname('a', ca_after)}")
     if cb_before != cb_after and cb_after is not None:
-        logs.append(f"  🔄 AI方 换上 {pname('b', cb_after)}")
+        switch_logs.append(f"  🔄 AI方 换上 {pname('b', cb_after)}")
 
-    return logs
+    return switch_logs + logs
 
 
 # ═══════════════════════════════════════
@@ -591,7 +593,8 @@ def _get_type_effectiveness_for_display(attacker_type_val: str, defender_type_va
 def serialize_state(state: BattleState, waiting: bool = False,
                     game_over: bool = False, winner: str = None,
                     events: List[dict] = None,
-                    force_switch_prompt: bool = False):
+                    force_switch_prompt: bool = False,
+                    force_switch_reason: str = "force_switch"):
     team_a_data = []
     for i, p in enumerate(state.team_a):
         d = serialize_pokemon(p, is_current=(i == state.current_a))
@@ -626,9 +629,10 @@ def serialize_state(state: BattleState, waiting: bool = False,
         "waiting_for_player": waiting,
         "game_over":          game_over,
         "winner":             winner,
-        "logs":               session.logs,       # 完整日志，前端增量追加
-        "events":             events or [],        # 本回合动画事件
-        "force_switch_prompt": force_switch_prompt,  # 泡沫幻影等触发后要求玩家选择换人
+        "logs":               session.logs,
+        "events":             events or [],
+        "force_switch_prompt":  force_switch_prompt,
+        "force_switch_reason":  force_switch_reason,  # "fainted" | "force_switch"
     }
 
 
@@ -880,11 +884,11 @@ async def receive_player_action(ws: WebSocket, msg: dict):
         f"  vs  🤖{pb.name}（HP {pb.current_hp}/{pb.hp} E={pb.energy}）"
     )
 
-    # ── 玩家行动描述 ──
+    # ── 玩家行动声明 ──
     if action_a[0] == -1:
         session.add_log("  🧑 你选择：汇合聚能（+5能）")
     elif action_a[0] == -2:
-        session.add_log(f"  🧑 你选择：换上 {state.team_a[action_a[1]].name}")
+        session.add_log(f"  🧑 你选择：换上 {state.team_a[action_a[1]].name}（优先执行）")
     else:
         sk = pa.skills[action_a[0]]
         eff_str = _eff_preview(sk)
@@ -923,11 +927,11 @@ async def receive_player_action(ws: WebSocket, msg: dict):
         import random
         action_b = random.choice(fallback_actions)
 
-    # ── AI行动描述 ──
+    # ── AI 行动声明 ──
     if action_b[0] == -1:
         session.add_log("  🤖 AI选择：汇合聚能（+5能）")
     elif action_b[0] == -2:
-        session.add_log(f"  🤖 AI选择：换上 {state.team_b[action_b[1]].name}")
+        session.add_log(f"  🤖 AI选择：换上 {state.team_b[action_b[1]].name}（优先执行）")
     else:
         sk_b    = pb.skills[action_b[0]]
         eff_str = _eff_preview(sk_b)
@@ -986,54 +990,49 @@ async def receive_player_action(ws: WebSocket, msg: dict):
     # ── 生成前端动画事件 ──
     events = _build_events(snap_before, snap_after, state, action_a, action_b, pa, pb)
 
-    # ── 处理应对触发的强制换人（泡沫幻影等） ──
+    # ── 处理死亡/脱离触发的强制换人（不占回合，玩家手动选）──
     pending = state.pending_switch_requests
     if pending:
         state.pending_switch_requests = []
         for req in pending:
+            reason = req.get("reason", "force_switch")
             if req["team"] == "a":
                 # 玩家方需要手动选择
-                session.add_log(f"  🔄 泡沫幻影应对成功！选择换上哪只精灵")
+                if reason == "fainted":
+                    session.add_log(f"  💀 精灵倒下！选择下一只上场精灵（不占回合）")
+                else:
+                    session.add_log(f"  🔄 脱离成功！选择换上哪只精灵（不占回合）")
                 await ws.send_text(json.dumps(serialize_state(
                     state, waiting=True, events=events,
                     force_switch_prompt=True,
+                    force_switch_reason=reason,
                 )))
-                events = []  # 事件已发送，清空避免重复
-                # 等待玩家发送换人消息（BUG #2 FIX: Add 15s timeout to prevent indefinite wait）
+                events = []
                 try:
-                    raw = await asyncio.wait_for(ws.receive_text(), timeout=15.0)
+                    raw = await asyncio.wait_for(ws.receive_text(), timeout=30.0)
                     msg2 = json.loads(raw)
                 except asyncio.TimeoutError:
-                    session.add_log(f"  ⏱️  玩家选择换人超时（>15s），AI自动选择")
-                    # 超时，AI代选
-                    chosen = _ai_switch_callback(state, state.team_a, req["alive"])
+                    session.add_log(f"  ⏱️  玩家选择超时，自动选第一只")
+                    chosen = req["alive"][0]
                     msg2 = {"type": "switch", "index": chosen}
                 except json.JSONDecodeError:
-                    session.add_log(f"  ❌ 换人消息格式错误，AI自动选择")
-                    chosen = _ai_switch_callback(state, state.team_a, req["alive"])
+                    chosen = req["alive"][0]
                     msg2 = {"type": "switch", "index": chosen}
-                
+
                 if msg2.get("type") == "switch" and msg2.get("index") in req["alive"]:
                     chosen = msg2["index"]
-                    if req["team"] == "a":
-                        state.current_a = chosen
-                    else:
-                        state.current_b = chosen
-                    new_p = state.team_a[chosen] if req["team"] == "a" else state.team_b[chosen]
+                    state.current_a = chosen
+                    new_p = state.team_a[chosen]
                     session.add_log(f"  ↩️  换上 {new_p.name}")
                     # 触发入场特性
-                    from src.battle import _trigger_battle_start_effects
-                    _trigger_battle_start_effects(state)
-                    EffectExecutor.execute_agility_entry(
-                        state, new_p,
-                        state.team_b[state.current_b] if req["team"] == "a" else state.team_a[state.current_a],
-                        req["team"],
-                    )
+                    enemy_p = state.team_b[state.current_b]
+                    from src.battle import _apply_mark_on_enter
+                    _apply_mark_on_enter(state, "a", new_p)
+                    EffectExecutor.execute_agility_entry(state, new_p, enemy_p, "a")
                     if new_p.ability_effects:
                         EffectExecutor.execute_ability(
-                            state, new_p,
-                            state.team_b[state.current_b] if req["team"] == "a" else state.team_a[state.current_a],
-                            Timing.ON_ENTER, new_p.ability_effects, req["team"],
+                            state, new_p, enemy_p,
+                            Timing.ON_ENTER, new_p.ability_effects, "a",
                         )
             else:
                 # AI方由 AI 决策
@@ -1041,8 +1040,15 @@ async def receive_player_action(ws: WebSocket, msg: dict):
                 state.current_b = chosen
                 new_p = state.team_b[chosen]
                 session.add_log(f"  🤖 AI 换上 {new_p.name}")
-                from src.battle import _trigger_battle_start_effects
-                _trigger_battle_start_effects(state)
+                # AI方入场特性
+                enemy_p = state.team_a[state.current_a]
+                from src.battle import _apply_mark_on_enter
+                _apply_mark_on_enter(state, "b", new_p)
+                if new_p.ability_effects:
+                    EffectExecutor.execute_ability(
+                        state, new_p, enemy_p,
+                        Timing.ON_ENTER, new_p.ability_effects, "b",
+                    )
 
     winner = check_winner(state)
     if winner:
@@ -1092,62 +1098,141 @@ def _eff_preview(s) -> str:
 
 
 def _build_events(snap_before, snap_after, state, action_a, action_b, pa_before, pb_before) -> List[dict]:
-    """生成本回合前端动画事件列表"""
-    events = []
-    n = len(state.team_a)
+    """生成本回合前端动画事件列表（按先后手时序排列）"""
 
-    # A 方伤害事件 —— 用 snap_after 的 current 来找正确的精灵（换人后检测新精灵）
-    ca_after = snap_after.get("current_a", snap_before.get("current_a", 0))
     ca_before = snap_before.get("current_a", 0)
-    # 如果换人了，旧精灵HP不变，检测新精灵的HP差
-    if ca_after != ca_before:
-        hp_before_val = snap_before.get(f"a_{ca_after}_hp", snap_after.get(f"a_{ca_after}_hp", 0))
-        hp_after_val = snap_after.get(f"a_{ca_after}_hp", 0)
-    else:
-        hp_before_val = snap_before.get(f"a_{ca_after}_hp", 0)
-        hp_after_val = snap_after.get(f"a_{ca_after}_hp", 0)
-    dmg_a = hp_before_val - hp_after_val
-    if dmg_a > 0:
-        # 查攻击方(B)的属性克制信息
-        eff_a = state.team_b[cb_after].ability_state.pop("_last_effectiveness", 1.0) if cb_after < len(state.team_b) else 1.0
-        evt = {"type": "hit", "side": "a", "dmg": dmg_a}
-        if eff_a >= 2.0: evt["eff"] = "super"
-        elif eff_a <= 0.5 and eff_a > 0: evt["eff"] = "resist"
-        events.append(evt)
-
-    # B 方伤害事件
-    cb_after = snap_after.get("current_b", snap_before.get("current_b", 0))
     cb_before = snap_before.get("current_b", 0)
-    if cb_after != cb_before:
-        hp_before_val = snap_before.get(f"b_{cb_after}_hp", snap_after.get(f"b_{cb_after}_hp", 0))
-        hp_after_val = snap_after.get(f"b_{cb_after}_hp", 0)
-    else:
-        hp_before_val = snap_before.get(f"b_{cb_after}_hp", 0)
-        hp_after_val = snap_after.get(f"b_{cb_after}_hp", 0)
-    dmg_b = hp_before_val - hp_after_val
-    if dmg_b > 0:
+    ca_after  = snap_after.get("current_a", ca_before)
+    cb_after  = snap_after.get("current_b", cb_before)
+
+    # ── 判断先后手 ──
+    is_switch_a = len(action_a) == 2 and action_a[0] == -2
+    is_switch_b = len(action_b) == 2 and action_b[0] == -2
+    spd_a = pa_before.speed if pa_before else 0
+    spd_b = pb_before.speed if pb_before else 0
+    pri_a = 99 if is_switch_a else spd_a
+    pri_b = 99 if is_switch_b else spd_b
+    a_first = pri_a >= pri_b
+
+    # ── 伤害计算（用 after 时的在场精灵索引） ──
+    def calc_dmg(side, cur_idx):
+        snap_k = f"{side}_{cur_idx}_hp"
+        hp_before_val = snap_before.get(snap_k, snap_after.get(snap_k, 0))
+        hp_after_val  = snap_after.get(snap_k, 0)
+        return max(0, hp_before_val - hp_after_val)
+
+    dmg_a = calc_dmg("a", ca_after)
+    dmg_b = calc_dmg("b", cb_after)
+
+    eff_a = state.team_b[cb_after].ability_state.pop("_last_effectiveness_on_a", 1.0) if cb_after < len(state.team_b) else 1.0
+    eff_b = state.team_a[ca_after].ability_state.pop("_last_effectiveness_on_b", 1.0) if ca_after < len(state.team_a) else 1.0
+    if eff_a == 1.0:
+        eff_a = state.team_b[cb_after].ability_state.pop("_last_effectiveness", 1.0) if cb_after < len(state.team_b) else 1.0
+    if eff_b == 1.0:
         eff_b = state.team_a[ca_after].ability_state.pop("_last_effectiveness", 1.0) if ca_after < len(state.team_a) else 1.0
-        evt = {"type": "hit", "side": "b", "dmg": dmg_b}
-        if eff_b >= 2.0: evt["eff"] = "super"
-        elif eff_b <= 0.5 and eff_b > 0: evt["eff"] = "resist"
-        events.append(evt)
 
-    # 防御技能（damage_reduction > 0）→ 盾牌事件
-    if action_a[0] >= 0:
-        sk = pa_before.skills[action_a[0]]
-        if sk.damage_reduction > 0 or _has_counter(sk):
-            events.append({"type": "shield", "side": "a"})
-    if action_b[0] >= 0:
-        sk = pb_before.skills[action_b[0]]
-        if sk.damage_reduction > 0 or _has_counter(sk):
-            events.append({"type": "shield", "side": "b"})
+    # ── 检测某方在场精灵是否新增了 debuff（燃烧/中毒/寄生/冻结）──
+    # 只检测在场精灵（ca_after / cb_after 对应的那只）
+    def has_new_debuff(side, cur_idx):
+        for key in ("poison", "burn", "leech", "frost"):
+            before_val = snap_before.get(f"{side}_{cur_idx}_{key}", 0)
+            after_val  = snap_after.get(f"{side}_{cur_idx}_{key}", 0)
+            if after_val > before_val:
+                return True
+        return False
 
-    # 倒地事件
+    a_got_debuff = has_new_debuff("a", ca_after)
+    b_got_debuff = has_new_debuff("b", cb_after)
+
+    # ── 检测某方在场精灵是否回血（HP 增加，如吸血/治愈）──
+    def calc_heal(side, cur_idx):
+        snap_k = f"{side}_{cur_idx}_hp"
+        hp_before_val = snap_before.get(snap_k, snap_after.get(snap_k, 0))
+        hp_after_val  = snap_after.get(snap_k, 0)
+        return max(0, hp_after_val - hp_before_val)
+
+    heal_a = calc_heal("a", ca_after)
+    heal_b = calc_heal("b", cb_after)
+
+    def mk_hit(side, dmg, eff, atk_anim):
+        evt = {"type": "hit", "side": side, "dmg": dmg, "atk_anim": atk_anim}
+        if eff >= 2.0:          evt["eff"] = "super"
+        elif 0 < eff <= 0.5:    evt["eff"] = "resist"
+        return evt
+
+    def mk_debuff_hit(side, dmg):
+        """状态 debuff 造成的受击：只有受击方闪烁，无冲刺"""
+        return {"type": "hit", "side": side, "dmg": dmg, "atk_anim": False}
+
+    def mk_shield(side):
+        return {"type": "shield", "side": side}
+
+    def get_shield(side):
+        action = action_a if side == "a" else action_b
+        poke   = pa_before if side == "a" else pb_before
+        if action[0] >= 0 and poke and action[0] < len(poke.skills):
+            sk = poke.skills[action[0]]
+            if sk.damage_reduction > 0 or _has_counter(sk):
+                return mk_shield(side)
+        return None
+
+    # ── 换宠事件 ──
+    switch_events = []
+    for side, before_idx, after_idx, team_list in [
+        ("a", ca_before, ca_after, state.team_a),
+        ("b", cb_before, cb_after, state.team_b),
+    ]:
+        if before_idx != after_idx:
+            old_p = team_list[before_idx] if before_idx < len(team_list) else None
+            new_p = team_list[after_idx]  if after_idx  < len(team_list) else None
+            switch_events.append({"type": "switch_out", "side": side,
+                                   "name": old_p.name if old_p else ""})
+            switch_events.append({"type": "switch_in",  "side": side,
+                                   "name": new_p.name if new_p else "",
+                                   "icon_url": _get_icon_url(new_p.name) if new_p else ""})
+
+    # ── 倒地事件 ──
+    faint_events = []
     for team, n_count in [("a", len(state.team_a)), ("b", len(state.team_b))]:
         for i in range(n_count):
             if not snap_before.get(f"{team}_{i}_fainted") and snap_after.get(f"{team}_{i}_fainted"):
-                events.append({"type": "faint", "side": team, "idx": i})
+                faint_events.append({"type": "faint", "side": team, "idx": i})
 
+    # ── 按时序组装 ──
+    events = []
+    events.extend(switch_events)
+
+    first_side  = "a" if a_first else "b"
+    second_side = "b" if a_first else "a"
+    first_dmg    = dmg_b if first_side == "a" else dmg_a
+    second_dmg   = dmg_a if first_side == "a" else dmg_b
+    first_heal   = heal_a if first_side == "a" else heal_b   # 先手方自己是否回血
+    second_heal  = heal_b if first_side == "a" else heal_a
+    first_got_debuff  = b_got_debuff if first_side == "a" else a_got_debuff
+    second_got_debuff = a_got_debuff if first_side == "a" else b_got_debuff
+
+    sh_first  = get_shield(second_side)
+    sh_second = get_shield(first_side)
+
+    # 先手行动
+    if sh_first:
+        events.append(sh_first)
+    if first_dmg > 0:
+        eff = eff_b if first_side == "a" else eff_a
+        events.append(mk_hit(second_side, first_dmg, eff, not first_got_debuff))
+    if first_heal > 0:
+        events.append({"type": "heal", "side": first_side, "amount": first_heal})
+
+    # 后手行动
+    if sh_second:
+        events.append(sh_second)
+    if second_dmg > 0:
+        eff = eff_a if first_side == "a" else eff_b
+        events.append(mk_hit(first_side, second_dmg, eff, not second_got_debuff))
+    if second_heal > 0:
+        events.append({"type": "heal", "side": second_side, "amount": second_heal})
+
+    events.extend(faint_events)
     return events
 
 
@@ -1274,6 +1359,10 @@ async def battle_page():
 @app.get("/team")
 async def team_page():
     return FileResponse(os.path.join(STATIC_DIR, "team.html"))
+
+@app.get("/rules")
+async def rules_page():
+    return FileResponse(os.path.join(STATIC_DIR, "rules.html"))
 
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
