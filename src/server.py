@@ -1376,6 +1376,16 @@ async def team_page():
 async def rules_page():
     return FileResponse(os.path.join(STATIC_DIR, "rules.html"))
 
+# Serve theme.css directly at /theme.css
+@app.get("/theme.css")
+async def theme_css():
+    return FileResponse(os.path.join(STATIC_DIR, "theme.css"), media_type="text/css")
+
+# Serve web/assets/ (fonts, images) at /assets/
+ASSETS_DIR = os.path.join(STATIC_DIR, "assets")
+if os.path.exists(ASSETS_DIR):
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

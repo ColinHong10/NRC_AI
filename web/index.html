@@ -2,8 +2,172 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="0; url=/team">
-<title>洛克王国战斗模拟器</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>洛克王国 · 战斗模拟器</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+body {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  overflow: hidden; position: relative;
+}
+body::before { opacity: 0.05; }
+
+/* Hero background */
+.hero-bg {
+  position: fixed; inset: 0; z-index: 0;
+  background: url('assets/img/banner.png') center / cover no-repeat;
+  filter: blur(2px) brightness(0.85);
+}
+.hero-overlay {
+  position: fixed; inset: 0; z-index: 0;
+  background: linear-gradient(180deg,
+    rgba(255,253,249,0.3) 0%,
+    rgba(255,253,249,0.6) 40%,
+    rgba(245,166,35,0.2) 100%
+  );
+}
+
+/* Content card */
+.landing-card {
+  position: relative; z-index: 2;
+  background: rgba(255, 253, 249, 0.92);
+  border: 2px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 48px 56px;
+  text-align: center;
+  box-shadow: var(--shadow-lg), 0 0 60px rgba(245,166,35,0.15);
+  backdrop-filter: blur(12px);
+  max-width: 480px;
+  width: 90%;
+}
+
+.landing-logo {
+  height: 40px;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+.landing-title {
+  font-family: 'RocoTitle', 'RocoBody', system-ui, sans-serif;
+  font-size: 32px;
+  color: var(--primary-dark);
+  margin-bottom: 8px;
+  text-shadow: 0 2px 4px rgba(245,166,35,0.15);
+  letter-spacing: 2px;
+}
+
+.landing-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+  line-height: 1.6;
+}
+
+.landing-btns {
+  display: flex; flex-direction: column; gap: 12px;
+  align-items: center;
+}
+
+.landing-btn-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 14px 48px;
+  background: var(--primary-gradient);
+  color: var(--text-light);
+  border: none; border-radius: var(--r-pill);
+  font-family: 'RocoTitle', 'RocoBody', system-ui, sans-serif;
+  font-size: 18px; font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(245,166,35,0.4);
+  transition: all 0.2s var(--ease);
+  text-decoration: none;
+  letter-spacing: 1px;
+}
+.landing-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(245,166,35,0.5);
+  filter: brightness(1.05);
+}
+
+.landing-btn-secondary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 32px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 2px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  font-family: 'RocoBody', system-ui, sans-serif;
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
+  text-decoration: none;
+}
+.landing-btn-secondary:hover {
+  border-color: var(--primary);
+  background: var(--bg-card-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.landing-footer {
+  margin-top: 24px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.landing-footer a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.landing-footer a:hover { color: var(--primary-dark); }
+
+/* Floating star decoration */
+.star-deco {
+  position: fixed; z-index: 1;
+  color: var(--accent-star);
+  font-size: 24px;
+  opacity: 0.3;
+  animation: star-float 6s ease-in-out infinite;
+  pointer-events: none;
+}
+.star-deco:nth-child(1) { top: 15%; left: 10%; animation-delay: 0s; font-size: 20px; }
+.star-deco:nth-child(2) { top: 25%; right: 12%; animation-delay: 1.5s; font-size: 28px; }
+.star-deco:nth-child(3) { bottom: 20%; left: 8%; animation-delay: 3s; font-size: 16px; }
+.star-deco:nth-child(4) { bottom: 30%; right: 15%; animation-delay: 4.5s; font-size: 22px; }
+
+@keyframes star-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.3; }
+  50% { transform: translateY(-12px) rotate(15deg); opacity: 0.5; }
+}
+</style>
 </head>
-<body>跳转中… <a href="/team">点击进入阵容搭配</a></body>
+<body>
+
+<div class="hero-bg"></div>
+<div class="hero-overlay"></div>
+
+<div class="star-deco">★</div>
+<div class="star-deco">★</div>
+<div class="star-deco">★</div>
+<div class="star-deco">★</div>
+
+<div class="landing-card">
+  <img class="landing-logo" src="assets/img/logo.png" alt="洛克王国">
+  <h1 class="landing-title">战斗模拟器</h1>
+  <p class="landing-subtitle">
+    高还原度洛克王国战斗系统<br>
+    搭建你的梦之队，挑战 AI 对手！
+  </p>
+
+  <div class="landing-btns">
+    <a href="/team" class="landing-btn-primary">⚔️ 开始对战</a>
+    <a href="/rules" class="landing-btn-secondary">📖 规则手册</a>
+  </div>
+
+  <div class="landing-footer">
+    <p>461 精灵 · 594 技能 · 169 特性 · 12 印记</p>
+    <p style="margin-top:4px"><a href="https://github.com/ColinHong10/NRC_AI" target="_blank">GitHub</a> · MIT License</p>
+  </div>
+</div>
+
+</body>
 </html>

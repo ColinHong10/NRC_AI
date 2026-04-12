@@ -1,0 +1,452 @@
+/* ============================================
+   洛克王国战斗模拟器 — 暖色主题 (theme.css)
+   设计参考：洛克王国 Wiki + 官方主题 PPT
+   ============================================ */
+
+/* --- Font Faces --- */
+@font-face {
+  font-family: 'RocoTitle';
+  src: url('assets/fonts/HYXiaoBoHeiQiShiW.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'RocoBody';
+  src: url('assets/fonts/皇室战争 B.otf') format('opentype');
+  font-weight: bold;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'RocoBody';
+  src: url('assets/fonts/皇室战争 L.otf') format('opentype');
+  font-weight: normal;
+  font-display: swap;
+}
+
+/* --- CSS Variables --- */
+:root {
+  /* Primary palette */
+  --primary: #F5A623;
+  --primary-light: #FFC85C;
+  --primary-dark: #E0931A;
+  --primary-gradient: linear-gradient(135deg, #FFC85C 0%, #F5A623 50%, #E0931A 100%);
+
+  /* Backgrounds */
+  --bg-page: #FFFDF9;
+  --bg-card: #F5EDE0;
+  --bg-card-hover: #EDE4D3;
+  --bg-panel: rgba(245, 237, 224, 0.85);
+  --bg-input: #FFFFFF;
+  --bg-topbar: linear-gradient(135deg, #FFC85C 0%, #F5A623 40%, #E8961E 100%);
+
+  /* Title & dark accents */
+  --title-bg: #3A3A3A;
+  --title-bg-hover: #4A4A4A;
+
+  /* Accent */
+  --accent-star: #FFC000;
+  --accent-blue: #5BA8D5;
+
+  /* Text */
+  --text-primary: #4A3728;
+  --text-secondary: #8B7355;
+  --text-muted: #B8A88A;
+  --text-light: #FFFFFF;
+  --text-on-primary: #FFFFFF;
+
+  /* Borders & Shadows */
+  --border: #E8DFD0;
+  --border-strong: #D4C4AA;
+  --shadow-sm: 0 2px 6px rgba(180, 160, 130, 0.15);
+  --shadow-md: 0 4px 12px rgba(180, 160, 130, 0.2);
+  --shadow-lg: 0 8px 24px rgba(180, 160, 130, 0.25);
+  --shadow-glow: 0 0 20px rgba(245, 166, 35, 0.3);
+
+  /* Radius */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-xl: 30px;
+  --r-pill: 45px;
+
+  /* Battle status colors */
+  --hp-green: #5CB85C;
+  --hp-yellow: #F0AD4E;
+  --hp-red: #D9534F;
+  --heal-green: #2ECC71;
+  --dmg-red: #E74C3C;
+  --dmg-phys: #E67E22;
+  --dmg-magic: #9B59B6;
+  --status-purple: #9B59B6;
+  --status-orange: #E67E22;
+  --buff-blue: #3498DB;
+  --debuff-red: #C0392B;
+  --energy-blue: #4FC3F7;
+
+  /* Type colors (attribute badges) */
+  --type-fire: #F08030;
+  --type-water: #6890F0;
+  --type-grass: #78C850;
+  --type-electric: #F8D030;
+  --type-ice: #98D8D8;
+  --type-poison: #A040A0;
+  --type-rock: #B8A038;
+  --type-flying: #A890F0;
+  --type-psychic: #F85888;
+  --type-ghost: #705898;
+  --type-fighting: #C03028;
+  --type-dark: #705848;
+  --type-fairy: #EE99AC;
+  --type-steel: #B8B8D0;
+  --type-dragon: #7038F8;
+  --type-bug: #A8B820;
+  --type-normal: #A8A878;
+  --type-ground: #E0C068;
+  --type-light: #FFD966;
+
+  /* Transitions */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration: 0.2s;
+}
+
+/* --- Global Reset & Base --- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'RocoBody', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Star pattern background overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url('assets/img/star-bg.png');
+  background-repeat: repeat;
+  background-size: 80px;
+  opacity: 0.08;
+}
+
+body > * { position: relative; z-index: 1; }
+
+/* --- Scrollbar --- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-card); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* --- Shared Components --- */
+
+/* Top Bar */
+.roco-topbar {
+  background: var(--bg-topbar);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 3px 12px rgba(200, 150, 50, 0.3);
+  position: relative;
+  z-index: 100;
+}
+.roco-topbar::after {
+  content: '';
+  position: absolute;
+  bottom: -12px; left: 0; right: 0;
+  height: 12px;
+  background: url('assets/img/swoosh.png') center / 100% 100% no-repeat;
+  opacity: 0.3;
+  pointer-events: none;
+}
+.roco-topbar .logo {
+  height: 32px;
+  filter: brightness(10);
+}
+.roco-topbar h1, .roco-topbar .title {
+  font-family: 'RocoTitle', 'RocoBody', system-ui, sans-serif;
+  color: var(--text-light);
+  font-size: 18px;
+  text-shadow: 1px 2px 4px rgba(0,0,0,0.2);
+  letter-spacing: 1px;
+}
+.roco-topbar .info {
+  color: rgba(255,255,255,0.85);
+  font-size: 13px;
+  margin-left: auto;
+}
+
+/* Cards */
+.roco-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  transition: transform var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
+}
+.roco-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Pill Title (black pill with white text + star icon) */
+.roco-pill-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--title-bg);
+  color: var(--text-light);
+  padding: 6px 16px;
+  border-radius: var(--r-pill);
+  font-family: 'RocoTitle', 'RocoBody', system-ui, sans-serif;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+}
+.roco-pill-title::before {
+  content: '\2605';
+  color: var(--accent-star);
+  font-size: 12px;
+}
+
+/* Buttons */
+.roco-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--primary-gradient);
+  color: var(--text-light);
+  font-family: 'RocoBody', system-ui, sans-serif;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  box-shadow: 0 3px 8px rgba(245, 166, 35, 0.3);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+.roco-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 15px rgba(245, 166, 35, 0.4);
+  filter: brightness(1.05);
+}
+.roco-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(245, 166, 35, 0.3);
+}
+.roco-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.roco-btn-secondary {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 2px solid var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  text-shadow: none;
+}
+.roco-btn-secondary:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-md);
+}
+
+.roco-btn-dark {
+  background: var(--title-bg);
+  color: var(--text-light);
+  box-shadow: var(--shadow-sm);
+}
+.roco-btn-dark:hover {
+  background: var(--title-bg-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.roco-btn-lg {
+  padding: 14px 40px;
+  font-size: 18px;
+  border-radius: var(--r-pill);
+}
+
+/* Input */
+.roco-input {
+  padding: 8px 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: 'RocoBody', system-ui, sans-serif;
+  font-size: 14px;
+  outline: none;
+  transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
+}
+.roco-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.15);
+}
+.roco-input::placeholder { color: var(--text-muted); }
+
+/* Type badges */
+.type-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+  white-space: nowrap;
+}
+.t-fire { background: var(--type-fire); }
+.t-water { background: var(--type-water); }
+.t-grass { background: var(--type-grass); }
+.t-electric { background: var(--type-electric); color: #5a4000; text-shadow: none; }
+.t-ice { background: var(--type-ice); color: #2a5a5a; text-shadow: none; }
+.t-poison { background: var(--type-poison); }
+.t-rock { background: var(--type-rock); }
+.t-flying { background: var(--type-flying); }
+.t-psychic { background: var(--type-psychic); }
+.t-ghost { background: var(--type-ghost); }
+.t-fighting { background: var(--type-fighting); }
+.t-dark { background: var(--type-dark); }
+.t-fairy { background: var(--type-fairy); }
+.t-steel { background: var(--type-steel); color: #444; text-shadow: none; }
+.t-dragon { background: var(--type-dragon); }
+.t-bug { background: var(--type-bug); }
+.t-normal { background: var(--type-normal); }
+.t-ground { background: var(--type-ground); color: #5a4000; text-shadow: none; }
+.t-light { background: var(--type-light); color: #5a4000; text-shadow: none; }
+.t-machine { background: #B8B8D0; color: #444; text-shadow: none; }
+.t-holy { background: #FFD966; color: #5a4000; text-shadow: none; }
+
+/* HP Bar */
+.hp-bar-wrap {
+  background: var(--border);
+  border-radius: 6px;
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+}
+.hp-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.4s var(--ease), background 0.4s var(--ease);
+}
+.hp-green { background: var(--hp-green); }
+.hp-yellow { background: var(--hp-yellow); }
+.hp-red { background: var(--hp-red); }
+
+/* Energy Dots */
+.energy-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-card);
+  transition: all 0.3s var(--ease);
+}
+.energy-dot.filled {
+  background: var(--energy-blue);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 6px rgba(79, 195, 247, 0.5);
+}
+
+/* Buff/Debuff tags */
+.buff-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  font-weight: bold;
+}
+.buff-up { background: rgba(52, 152, 219, 0.15); color: var(--buff-blue); border: 1px solid rgba(52, 152, 219, 0.3); }
+.buff-down { background: rgba(192, 57, 43, 0.1); color: var(--debuff-red); border: 1px solid rgba(192, 57, 43, 0.25); }
+
+/* Float damage / heal numbers */
+.float-num {
+  position: absolute;
+  font-family: 'RocoTitle', 'RocoBody', system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: bold;
+  pointer-events: none;
+  animation: float-up 0.95s var(--ease) forwards;
+  z-index: 50;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3), 0 0 8px rgba(0,0,0,0.15);
+}
+.float-dmg { color: var(--dmg-red); }
+.float-heal { color: var(--heal-green); }
+.float-status { color: var(--status-purple); }
+
+@keyframes float-up {
+  0% { opacity: 1; transform: translateY(0) scale(1.2); }
+  60% { opacity: 1; transform: translateY(-40px) scale(1); }
+  100% { opacity: 0; transform: translateY(-60px) scale(0.8); }
+}
+
+/* Modal overlay */
+.roco-modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(74, 55, 40, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.roco-modal {
+  background: var(--bg-page);
+  border: 2px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  max-width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* Connection status dot */
+.conn-dot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+.conn-dot.online { background: var(--hp-green); box-shadow: 0 0 6px var(--hp-green); }
+.conn-dot.offline { background: var(--hp-red); box-shadow: 0 0 6px var(--hp-red); }
+
+/* Tooltip */
+.roco-tooltip {
+  background: var(--title-bg);
+  color: var(--text-light);
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  box-shadow: var(--shadow-md);
+  max-width: 250px;
+  z-index: 200;
+}
+
+/* --- Utility classes --- */
+.text-center { text-align: center; }
+.text-muted { color: var(--text-muted); }
+.text-secondary { color: var(--text-secondary); }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.gap-4 { gap: 4px; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.mt-8 { margin-top: 8px; }
+.mt-16 { margin-top: 16px; }
+.mb-8 { margin-bottom: 8px; }
+.mb-16 { margin-bottom: 16px; }
