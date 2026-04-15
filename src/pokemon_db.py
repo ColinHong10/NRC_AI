@@ -111,10 +111,10 @@ def calc_combat_stats(
         mod = nature_config.get(stat, 0.0)
         if stat == "hp":
             raw = 1.7 * b + 0.85 * iv + 70
-            result[stat] = raw * (1.0 + mod) + 100
+            result[stat] = round(raw * (1.0 + mod) + 100)
         else:
             raw = 1.1 * b + 0.55 * iv + 10
-            result[stat] = raw * (1.0 + mod) + 50
+            result[stat] = round(raw * (1.0 + mod) + 50)
     return result
 
 

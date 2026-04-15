@@ -605,7 +605,6 @@ function onMsg(msg){
       if(msg.events && msg.events.length) playEvents(msg.events);
       if(msg.game_over) showGameOver(msg.winner);
       if(msg.force_switch_prompt && !msg.game_over){
-        console.log('[DEBUG] Force switch prompt received');
       }
       break;
     case 'your_turn':
@@ -639,20 +638,25 @@ function renderState(s){
   renderStrip('strip-a',s.team_a,s.current_a);
   renderStrip('strip-b',s.team_b,s.current_b);
 
+  const switchPanel = document.getElementById('switch-panel');
   if(s.force_switch_prompt && !s.game_over){
     myTurn=true;
     setWait(false);
     enableActions(false);
     renderSkills(null, null);
     renderForceSwitchPanel(s.team_a, s.current_a, pb, s.force_switch_reason || 'force_switch', s.force_switch_alive);
-  } else if(s.waiting_for_player && !s.game_over){
-    myTurn=true;
-    setWait(false);
-    renderSkills(pa, pb);
-    renderSwitchPanel(s.team_a, s.current_a, pb);
-  } else if(s.game_over){
-    myTurn=false;
-    setWait(false);
+  } else {
+    // 非强制换人状态时，确保关闭换人面板
+    switchPanel.classList.remove('open');
+    if(s.waiting_for_player && !s.game_over){
+      myTurn=true;
+      setWait(false);
+      renderSkills(pa, pb);
+      renderSwitchPanel(s.team_a, s.current_a, pb);
+    } else if(s.game_over){
+      myTurn=false;
+      setWait(false);
+    }
   }
 }
 
@@ -891,6 +895,7 @@ function doForceSwitch(idx){
   myTurn=false;
   enableActions(false);
   setWait(true,'换人中…');
+  document.getElementById('switch-panel').classList.remove('open');
   send({type:'switch', index:idx});
 }
 

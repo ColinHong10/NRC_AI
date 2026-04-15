@@ -297,7 +297,10 @@ class Pokemon:
 
     def __post_init__(self):
         if self.current_hp == 0:
-            self.current_hp = self.hp
+            self.current_hp = round(self.hp)
+        # 确保 HP 是整数
+        self.hp = round(self.hp)
+        self.current_hp = round(self.current_hp)
 
     @property
     def is_fainted(self) -> bool:

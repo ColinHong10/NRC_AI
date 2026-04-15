@@ -573,7 +573,7 @@ def turn_end_effects(state: BattleState) -> None:
             # 中毒: 3% × 层数 (不衰减)
             if p.poison_stacks > 0:
                 dmg = int(p.hp * 0.03 * p.poison_stacks)
-                p.current_hp -= max(1, dmg)
+                p.current_hp = round(p.current_hp - max(1, dmg), 2)
                 _check_frostbite_lethal(p)
                 if p.is_fainted:
                     break
@@ -582,7 +582,7 @@ def turn_end_effects(state: BattleState) -> None:
             enemy_p = enemy_team_list[enemy_idx]
             if p.poison_stacks > 0 and enemy_p.ability_state.get("extra_poison_tick"):
                 dmg2 = int(p.hp * 0.03 * p.poison_stacks)
-                p.current_hp -= max(1, dmg2)
+                p.current_hp = round(p.current_hp - max(1, dmg2), 2)
                 _check_frostbite_lethal(p)
                 if p.is_fainted:
                     break
@@ -591,7 +591,7 @@ def turn_end_effects(state: BattleState) -> None:
             # 燃薪虫煤渣草: 灼烧不衰减反而增长
             if p.burn_stacks > 0:
                 dmg = int(p.hp * 0.02 * p.burn_stacks)
-                p.current_hp -= max(1, dmg)
+                p.current_hp = round(p.current_hp - max(1, dmg), 2)
                 _check_frostbite_lethal(p)
                 if p.is_fainted:
                     break
@@ -617,7 +617,7 @@ def turn_end_effects(state: BattleState) -> None:
             # 寄生: 每层8%最大HP, 吸取给对手
             if p.leech_stacks > 0:
                 leech_dmg = int(p.hp * 0.08 * p.leech_stacks)
-                p.current_hp -= max(1, leech_dmg)
+                p.current_hp = round(p.current_hp - max(1, leech_dmg), 2)
                 _check_frostbite_lethal(p)
                 if p.is_fainted:
                     break
@@ -648,7 +648,7 @@ def turn_end_effects(state: BattleState) -> None:
                         meteor_dmg = max(1, int((e_spatk / p_spdef) * meteor_power * 0.9))
                     else:
                         meteor_dmg = max(1, meteor_power)
-                    p.current_hp -= meteor_dmg
+                    p.current_hp = round(p.current_hp - meteor_dmg, 2)
 
             # 生长特性：每回合回12%HP
             heal_per_turn = p.ability_state.get("heal_per_turn_pct", 0)
@@ -783,7 +783,7 @@ def _apply_mark_turn_end(state: BattleState) -> None:
         poison_mark = my_marks.get("poison_mark", 0)
         if poison_mark > 0:
             dmg = max(1, int(p.hp * 0.03 * poison_mark))
-            p.current_hp -= dmg
+            p.current_hp = round(p.current_hp - dmg, 2)
             if p.current_hp <= 0:
                 p.current_hp = 0
                 p.status = StatusType.FAINTED
@@ -822,7 +822,7 @@ def _apply_mark_on_enter(state: BattleState, team: str, pokemon: 'Pokemon') -> N
     thorn_mark = my_marks.get("thorn_mark", 0)
     if thorn_mark > 0:
         dmg = max(1, int(pokemon.hp * 0.06 * thorn_mark))
-        pokemon.current_hp -= dmg
+        pokemon.current_hp = round(pokemon.current_hp - dmg, 2)
         if pokemon.current_hp <= 0:
             pokemon.current_hp = 0
             pokemon.status = StatusType.FAINTED
@@ -1263,7 +1263,7 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
             missing = actual_cost - current.energy
             hp_cost = int(current.hp * 0.05 * missing)
             if current.current_hp > hp_cost:
-                current.current_hp -= hp_cost
+                current.current_hp = round(current.current_hp - hp_cost, 2)
                 current.energy = 0  # 消耗所有当前能量 + HP补差
             else:
                 # HP不够，回到正常聚能逻辑
@@ -1620,7 +1620,7 @@ def _apply_damage_to_enemy(state, enemy, damage: int, attacker=None, skill=None)
             if skill is not None and getattr(skill, "_last_actual_cost", skill.energy_cost) <= threshold:
                 damage = 0
         if damage > 0:
-            enemy.current_hp -= damage
+            enemy.current_hp = round(enemy.current_hp - damage, 2)
             if enemy.current_hp <= 0:
                 enemy.current_hp = 0
                 enemy.status = StatusType.FAINTED

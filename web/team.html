@@ -179,6 +179,131 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
 #loading .sp { width: 32px; height: 32px; border: 3px solid rgba(245,166,35,.2); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; }
 #loading p { font-size: 13px; color: var(--text-secondary); }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ══ 个体值/性格配置弹窗 ══ */
+#config-modal-bg { display: none; position: fixed; inset: 0; background: rgba(74,55,40,.5); backdrop-filter: blur(4px); z-index: 110; align-items: center; justify-content: center; }
+#config-modal-bg.open { display: flex; }
+#config-modal {
+  background: var(--bg-page); border: 2px solid var(--border); border-radius: var(--r-xl);
+  width: 520px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+#config-modal-header { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+#config-modal-title { font-family: 'RocoTitle', 'RocoBody', system-ui, sans-serif; font-size: 14px; font-weight: 700; color: var(--text-primary); }
+#config-modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; line-height: 1; }
+#config-modal-close:hover { color: var(--text-primary); }
+#config-modal-content { flex: 1; overflow-y: auto; padding: 16px; }
+#config-modal-footer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; flex-shrink: 0; }
+#config-confirm {
+  background: var(--primary-gradient); color: var(--text-light); border: none; border-radius: var(--r-pill);
+  padding: 7px 24px; font-size: 12px; font-weight: 700; cursor: pointer;
+  font-family: 'RocoBody', system-ui, sans-serif; box-shadow: 0 3px 8px rgba(245,166,35,.3);
+}
+#config-confirm:hover { opacity: .88; }
+
+/* 精灵信息 */
+#config-pokemon-info { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px; margin-bottom: 12px; }
+#config-pokemon-info .info-row { display: flex; font-size: 12px; margin-bottom: 4px; }
+#config-pokemon-info .info-row:last-child { margin-bottom: 0; }
+#config-pokemon-info .info-label { color: var(--text-secondary); min-width: 48px; }
+#config-pokemon-info .info-value { color: var(--text-primary); font-weight: 600; }
+
+/* 配置区块 */
+.config-section { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px; margin-bottom: 10px; }
+.config-section:last-child { margin-bottom: 0; }
+.section-title { font-size: 11px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.section-hint { font-size: 9px; color: var(--text-muted); font-weight: 400; }
+
+/* 个体值复选框 */
+.iv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.iv-checkbox { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.iv-checkbox input { cursor: pointer; }
+.iv-checkbox input:disabled { cursor: not-allowed; opacity: 0.5; }
+.iv-checkbox:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
+.iv-label { font-size: 11px; color: var(--text-primary); font-weight: 600; }
+.error-msg { font-size: 10px; color: var(--hp-red); min-height: 14px; margin-top: 4px; }
+
+/* 性格选择 */
+.nature-selector { display: flex; flex-direction: column; gap: 4px; }
+#cfg-nature {
+  width: 100%; background: var(--bg-card); border: 1.5px solid var(--border); border-radius: var(--r-md);
+  padding: 6px 8px; font-size: 11px; color: var(--text-primary); outline: none;
+  font-family: 'RocoBody', system-ui, sans-serif;
+}
+#cfg-nature:focus { border-color: var(--primary); }
+.nature-bonus { font-size: 10px; color: var(--text-secondary); }
+
+/* 战斗属性预览 */
+.stats-preview { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.stat-row { display: flex; justify-content: space-between; padding: 4px 8px; background: var(--bg-card); border-radius: var(--r-sm); }
+.stat-label { font-size: 10px; color: var(--text-secondary); }
+.stat-value { font-size: 10px; color: var(--text-primary); font-weight: 700; min-width: 48px; text-align: right; }
+
+/* ══ 保存队伍弹窗 ══ */
+#save-modal-bg { display: none; position: fixed; inset: 0; background: rgba(74,55,40,.5); backdrop-filter: blur(4px); z-index: 120; align-items: center; justify-content: center; }
+#save-modal-bg.open { display: flex; }
+#save-modal {
+  background: var(--bg-page); border: 2px solid var(--border); border-radius: var(--r-xl);
+  width: 400px; display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+#save-modal-header { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+#save-modal-title { font-family: 'RocoTitle', 'RocoBody', system-ui, sans-serif; font-size: 14px; font-weight: 700; color: var(--text-primary); }
+#save-modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; line-height: 1; }
+#save-modal-close:hover { color: var(--text-primary); }
+#save-modal-content { padding: 16px; }
+#save-modal-footer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; flex-shrink: 0; }
+.save-row { margin-bottom: 12px; }
+.save-row:last-child { margin-bottom: 0; }
+.save-label { display: block; font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 600; }
+#save-team-name {
+  width: 100%; background: var(--bg-input); border: 1.5px solid var(--border); border-radius: var(--r-md);
+  padding: 8px 10px; font-size: 13px; color: var(--text-primary); outline: none;
+  font-family: 'RocoBody', system-ui, sans-serif;
+}
+#save-team-name:focus { border-color: var(--primary); }
+#save-confirm {
+  background: var(--primary-gradient); color: var(--text-light); border: none; border-radius: var(--r-pill);
+  padding: 7px 24px; font-size: 12px; font-weight: 700; cursor: pointer;
+  font-family: 'RocoBody', system-ui, sans-serif; box-shadow: 0 3px 8px rgba(245,166,35,.3);
+}
+#save-confirm:hover { opacity: .88; }
+
+/* ══ 加载队伍弹窗 ══ */
+#load-modal-bg { display: none; position: fixed; inset: 0; background: rgba(74,55,40,.5); backdrop-filter: blur(4px); z-index: 120; align-items: center; justify-content: center; }
+#load-modal-bg.open { display: flex; }
+#load-modal {
+  background: var(--bg-page); border: 2px solid var(--border); border-radius: var(--r-xl);
+  width: 480px; max-height: 70vh; display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+#load-modal-header { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+#load-modal-title { font-family: 'RocoTitle', 'RocoBody', system-ui, sans-serif; font-size: 14px; font-weight: 700; color: var(--text-primary); }
+#load-modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; line-height: 1; }
+#load-modal-close:hover { color: var(--text-primary); }
+#load-modal-content { padding: 0; flex: 1; overflow-y: auto; }
+#load-modal-footer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; flex-shrink: 0; }
+#load-cancel {
+  background: var(--bg-input); color: var(--text-light); border: 1px solid var(--border); border-radius: var(--r-pill);
+  padding: 7px 20px; font-size: 12px; font-weight: 700; cursor: pointer;
+  font-family: 'RocoBody', system-ui, sans-serif;
+}
+#load-cancel:hover { opacity: .88; }
+.team-item {
+  padding: 12px 16px; border-bottom: 1px solid var(--border); cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between;
+  transition: background .15s;
+}
+.team-item:hover { background: var(--bg-card); }
+.team-item-info { flex: 1; }
+.team-item-name { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+.team-item-meta { font-size: 10px; color: var(--text-secondary); }
+.team-item-action { font-size: 11px; color: var(--primary-dark); font-weight: 600; }
+.team-item-delete {
+  background: none; border: none; color: var(--hp-red); cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 4px 8px; margin-left: 8px;
+}
+.team-item-delete:hover { opacity: .7; }
 </style>
 </head>
 <body>
@@ -194,6 +319,8 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
   <h1><img class="logo" src="assets/img/logo.png" alt="洛克王国">洛克王国 · 阵容搭配</h1>
   <div class="topbar-right">
     <span id="team-count">已选 0 / 6 只</span>
+    <button id="btn-save" onclick="openSaveModal()" style="background:var(--bg-input);color:var(--text-light);border:1px solid var(--border);border-radius:var(--r-pill);padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;margin-right:8px">💾 保存队伍</button>
+    <button id="btn-load" onclick="loadCurrentTeam()" style="background:var(--bg-input);color:var(--text-light);border:1px solid var(--border);border-radius:var(--r-pill);padding:7px 16px;font-size:12px;font-weight:600;cursor:pointer;margin-right:8px">📂 加载队伍</button>
     <button id="btn-start" disabled onclick="goToBattle()">⚔️ 开始战斗</button>
   </div>
 </div>
@@ -270,6 +397,166 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
   </div>
 </div>
 
+<!-- 加载队伍弹窗 -->
+<div id="load-modal-bg">
+  <div id="load-modal">
+    <div id="load-modal-header">
+      <span id="load-modal-title">选择队伍</span>
+      <button id="load-modal-close" onclick="closeLoadModal()">✕</button>
+    </div>
+    <div id="load-modal-content">
+      <div id="load-team-list"></div>
+      <div id="load-no-teams" style="display:none;color:var(--text-muted);font-size:12px;padding:20px;text-align:center">没有已保存的队伍</div>
+    </div>
+    <div id="load-modal-footer">
+      <button id="load-cancel" onclick="closeLoadModal()">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 保存队伍弹窗 -->
+<div id="save-modal-bg">
+  <div id="save-modal">
+    <div id="save-modal-header">
+      <span id="save-modal-title">保存队伍</span>
+      <button id="save-modal-close" onclick="closeSaveModal()">✕</button>
+    </div>
+    <div id="save-modal-content">
+      <div class="save-row">
+        <label class="save-label">队伍名称：</label>
+        <input type="text" id="save-team-name" placeholder="输入队伍名称…" maxlength="30">
+      </div>
+      <div id="save-error" class="error-msg"></div>
+    </div>
+    <div id="save-modal-footer">
+      <button id="save-confirm" onclick="confirmSaveTeam()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 个体值和性格配置弹窗 -->
+<div id="config-modal-bg">
+  <div id="config-modal">
+    <div id="config-modal-header">
+      <span id="config-modal-title">配置精灵</span>
+      <button id="config-modal-close" onclick="closeConfigModal()">✕</button>
+    </div>
+    <div id="config-modal-content">
+      <!-- 精灵信息 -->
+      <div id="config-pokemon-info">
+        <div class="info-row">
+          <span class="info-label">名称：</span>
+          <span id="cfg-pokemon-name" class="info-value"></span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">属性：</span>
+          <span id="cfg-pokemon-element" class="info-value"></span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">特性：</span>
+          <span id="cfg-pokemon-ability" class="info-value"></span>
+        </div>
+      </div>
+
+      <!-- 个体值配置 -->
+      <div class="config-section">
+        <div class="section-title">个体值配置 <span class="section-hint">（选择 3 项 = 60，其余 = 0）</span></div>
+        <div class="iv-grid">
+          <label class="iv-checkbox">
+            <input type="checkbox" data-iv="hp" onchange="onIvChange()">
+            <span class="iv-label">HP</span>
+          </label>
+          <label class="iv-checkbox">
+            <input type="checkbox" data-iv="atk" onchange="onIvChange()">
+            <span class="iv-label">物攻</span>
+          </label>
+          <label class="iv-checkbox">
+            <input type="checkbox" data-iv="def" onchange="onIvChange()">
+            <span class="iv-label">物防</span>
+          </label>
+          <label class="iv-checkbox">
+            <input type="checkbox" data-iv="spatk" onchange="onIvChange()">
+            <span class="iv-label">魔攻</span>
+          </label>
+          <label class="iv-checkbox">
+            <input type="checkbox" data-iv="spdef" onchange="onIvChange()">
+            <span class="iv-label">魔防</span>
+          </label>
+          <label class="iv-checkbox">
+            <input type="checkbox" data-iv="speed" onchange="onIvChange()">
+            <span class="iv-label">速度</span>
+          </label>
+        </div>
+        <div id="iv-error" class="error-msg"></div>
+      </div>
+
+      <!-- 性格选择 -->
+      <div class="config-section">
+        <div class="section-title">性格选择</div>
+        <div class="nature-selector">
+          <select id="cfg-nature" onchange="onNatureChange()">
+            <option value="坦率">坦率（无修正）</option>
+            <option value="固执">固执（物攻 +20%, 魔攻 -10%）</option>
+            <option value="勇敢">勇敢（物攻 +20%, 速度 -10%）</option>
+            <option value="保守">保守（魔攻 +20%, 物攻 -10%）</option>
+            <option value="稳重">稳重（魔攻 +20%, 物防 -10%）</option>
+            <option value="冷静">冷静（魔攻 +20%, 速度 -10%）</option>
+            <option value="爽朗">爽朗（速度 +20%, 物攻 -10%）</option>
+            <option value="急躁">急躁（速度 +20%, 物防 -10%）</option>
+            <option value="开朗">开朗（速度 +20%, 魔攻 -10%）</option>
+            <option value="顽皮">顽皮（物攻 +20%, 魔防 -10%）</option>
+            <option value="自大">自大（物防 +20%, 魔攻 -10%）</option>
+            <option value="谨慎">谨慎（物防 +20%, 魔攻 -10%）</option>
+            <option value="温和">温和（魔防 +20%, 物攻 -10%）</option>
+            <option value="沉着">沉着（魔防 +20%, 物攻 -10%）</option>
+            <option value="内敛">内敛（魔攻 +20%, 物攻 -10%）</option>
+            <option value="慢吞吞">慢吞吞（魔攻 +20%, 物防 -10%）</option>
+            <option value="害羞">害羞（魔攻 +20%, 魔防 -10%）</option>
+            <option value="认真">认真（无修正）</option>
+            <option value="勤奋">勤奋（无修正）</option>
+            <option value="实干">实干（无修正）</option>
+          </select>
+          <div id="cfg-nature-bonus" class="nature-bonus"></div>
+        </div>
+      </div>
+
+      <!-- 战斗属性预览 -->
+      <div class="config-section">
+        <div class="section-title">战斗属性预览</div>
+        <div class="stats-preview">
+          <div class="stat-row">
+            <span class="stat-label">HP:</span>
+            <span id="stat-hp" class="stat-value">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">物攻:</span>
+            <span id="stat-atk" class="stat-value">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">物防:</span>
+            <span id="stat-def" class="stat-value">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">魔攻:</span>
+            <span id="stat-spatk" class="stat-value">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">魔防:</span>
+            <span id="stat-spdef" class="stat-value">—</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">速度:</span>
+            <span id="stat-speed" class="stat-value">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="config-modal-footer">
+      <button id="config-confirm" onclick="confirmConfig()">确认配置</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ══════════════════════════════
 // 状态
@@ -284,6 +571,195 @@ let currentQuery = '';
 let modalSlotIdx = -1;
 let allSkills = [];
 let selectedSkills = [];
+
+// 个体值和性格配置状态
+let configSlotIdx = -1;
+let configPokemonData = null;
+let selectedIvs = { hp: false, atk: false, def: false, spatk: false, spdef: false, speed: false };
+let selectedNature = '坦率';
+
+// localStorage 队伍存储
+const STORAGE_KEY = 'nrc_teams';
+const CURRENT_TEAM_KEY = 'nrc_current_team';
+
+function generateTeamId() {
+  return 'team_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+function getTeamsFromStorage() {
+  try {
+    const data = localStorage.getItem(STORAGE_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch (e) {
+    console.error('读取队伍失败:', e);
+    return {};
+  }
+}
+
+function saveTeamsToStorage(teams) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(teams));
+  } catch (e) {
+    console.error('保存队伍失败:', e);
+  }
+}
+
+function saveCurrentTeam(teamName) {
+  const validTeam = team.filter(Boolean);
+  console.log('保存队伍 - 当前队伍:', validTeam.length);
+  if (validTeam.length !== 6) {
+    showHint('阵容必须包含 6 只精灵！');
+    return null;
+  }
+  const withoutSkills = validTeam.filter(t => !t.skills || t.skills.length < 1);
+  if (withoutSkills.length > 0) {
+    showHint('所有精灵必须配置技能！');
+    return null;
+  }
+
+  const teams = getTeamsFromStorage();
+  const teamId = generateTeamId();
+  const teamData = {
+    id: teamId,
+    name: teamName || '未命名队伍',
+    pokemon: team.map(t => t ? {
+      name: t.name,
+      element: t.element,
+      ability: t.ability,
+      bst: t.bst,
+      skills: t.skills,
+      iv_config: t.iv_config,
+      nature: t.nature,
+    } : null),
+    createdAt: new Date().toISOString(),
+  };
+
+  teams[teamId] = teamData;
+  saveTeamsToStorage(teams);
+  localStorage.setItem(CURRENT_TEAM_KEY, teamId);
+  console.log('保存成功，队伍 ID:', teamId);
+  showHint(`队伍 "${teamData.name}" 已保存！`);
+  return teamId;
+}
+
+function loadCurrentTeam() {
+  openLoadModal();
+}
+
+// ══════════════════════════════
+// 加载队伍弹窗
+// ══════════════════════════════
+function openLoadModal() {
+  const teams = getTeamsFromStorage();
+  const teamList = Object.values(teams);
+
+  if (teamList.length === 0) {
+    document.getElementById('load-team-list').style.display = 'none';
+    document.getElementById('load-no-teams').style.display = 'block';
+  } else {
+    document.getElementById('load-team-list').style.display = 'block';
+    document.getElementById('load-no-teams').style.display = 'none';
+
+    const container = document.getElementById('load-team-list');
+    container.innerHTML = '';
+
+    // 按创建时间倒序排列
+    teamList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    teamList.forEach(teamData => {
+      const div = document.createElement('div');
+      div.className = 'team-item';
+      const pokemonCount = teamData.pokemon.filter(p => p !== null).length;
+      div.innerHTML = `
+        <div class="team-item-info">
+          <div class="team-item-name">${teamData.name}</div>
+          <div class="team-item-meta">${pokemonCount}只精灵 · 保存于 ${new Date(teamData.createdAt).toLocaleString('zh-CN')}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="team-item-delete" onclick="event.stopPropagation(); deleteTeam('${teamData.id}')" title="删除">🗑</button>
+          <div class="team-item-action">加载</div>
+        </div>
+      `;
+      div.onclick = () => loadTeamById(teamData.id);
+      container.appendChild(div);
+    });
+  }
+
+  document.getElementById('load-modal-bg').classList.add('open');
+}
+
+function closeLoadModal() {
+  document.getElementById('load-modal-bg').classList.remove('open');
+}
+
+function loadTeamById(teamId) {
+  const teams = getTeamsFromStorage();
+  if (!teams[teamId]) {
+    showHint('队伍不存在！');
+    return;
+  }
+
+  const teamData = teams[teamId];
+  team = teamData.pokemon.map(p => p ? {
+    name: p.name,
+    element: p.element,
+    ability: p.ability,
+    bst: p.bst,
+    skills: p.skills || [],
+    iv_config: p.iv_config,
+    nature: p.nature || '坦率',
+  } : null);
+
+  renderTeamSlots();
+  renderPokemonList();
+  updateStartBtn();
+  localStorage.setItem(CURRENT_TEAM_KEY, teamId);
+  closeLoadModal();
+  showHint(`已加载队伍：${teamData.name}`);
+}
+
+function deleteTeam(teamId) {
+  if (!confirm('确定要删除这个队伍吗？')) return;
+
+  const teams = getTeamsFromStorage();
+  if (teams[teamId]) {
+    delete teams[teamId];
+    saveTeamsToStorage(teams);
+    showHint('队伍已删除');
+    openLoadModal(); // 刷新列表
+  }
+}
+
+// ══════════════════════════════
+// 保存队伍弹窗
+// ══════════════════════════════
+function openSaveModal() {
+  const validTeam = team.filter(Boolean);
+  if (validTeam.length !== 6) {
+    showHint('阵容必须包含 6 只精灵！');
+    return;
+  }
+  document.getElementById('save-team-name').value = '';
+  document.getElementById('save-error').textContent = '';
+  document.getElementById('save-modal-bg').classList.add('open');
+}
+
+function closeSaveModal() {
+  document.getElementById('save-modal-bg').classList.remove('open');
+}
+
+function confirmSaveTeam() {
+  const teamName = document.getElementById('save-team-name').value.trim();
+  if (!teamName) {
+    document.getElementById('save-error').textContent = '请输入队伍名称！';
+    return;
+  }
+
+  const teamId = saveCurrentTeam(teamName);
+  if (teamId) {
+    closeSaveModal();
+  }
+}
 
 // ══════════════════════════════
 // 初始化
@@ -361,11 +837,12 @@ function addPokemon(p) {
     showHint('阵容已满（6只），请先移除一只！');
     return;
   }
-  team[emptyIdx] = { name: p.name, element: p.element, ability: p.ability, bst: p.base_total, skills: [] };
+  team[emptyIdx] = { name: p.name, element: p.element, ability: p.ability, bst: p.base_total, skills: [], iv_config: null, nature: '坦率' };
   renderTeamSlots();
   renderPokemonList();
   updateStartBtn();
-  openSkillModal(emptyIdx);
+  // 先打开配置弹窗（个体值/性格），再打开技能弹窗
+  openConfigModal(emptyIdx);
 }
 
 // ══════════════════════════════
@@ -385,6 +862,16 @@ function renderTeamSlots() {
       const skillsHtml = t.skills.length > 0
         ? t.skills.map(s => `<span class="slot-skill-tag">${s}</span>`).join('')
         : `<span style="font-size:9px;color:var(--hp-red)">⚠ 未配置技能</span>`;
+      // 个体值注释
+      let ivNote = '未配置';
+      if (t.iv_config) {
+        const activeIvs = Object.entries(t.iv_config)
+          .filter(function(entry) { return entry[1] === 60; })
+          .map(function(entry) { return entry[0]; })
+          .join(', ');
+        ivNote = '个体值：' + activeIvs;
+      }
+      const natureNote = t.nature || '坦率';
       div.innerHTML = `
         <span class="slot-num">${i+1}</span>
         <button class="slot-remove" onclick="removePokemon(${i})" title="移除">✕</button>
@@ -392,9 +879,13 @@ function renderTeamSlots() {
         <div class="slot-type">
           <span class="sr-type ${elClass}" style="font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600">${t.element}</span>
           <span style="font-size:9px;color:var(--text-secondary);margin-left:4px">${t.ability ? t.ability.split(':')[0] : '—'}</span>
-          <button onclick="openSkillModal(${i})" style="background:none;border:1px solid var(--border);border-radius:3px;padding:1px 6px;font-size:9px;color:var(--primary-dark);cursor:pointer;margin-left:6px">编辑技能</button>
         </div>
-        <div class="slot-skills">${skillsHtml}</div>`;
+        <div style="font-size:9px;color:var(--text-muted);margin-left:20px;margin-top:4px">${ivNote} | ${natureNote}</div>
+        <div class="slot-skills" style="margin-top:6px">${skillsHtml}</div>
+        <div style="margin-left:20px;margin-top:6px;display:flex;gap:4px">
+          <button onclick="openConfigModal(${i})" style="background:none;border:1px solid var(--border);border-radius:3px;padding:1px 6px;font-size:9px;color:var(--primary-dark);cursor:pointer">个体值/性格</button>
+          <button onclick="openSkillModal(${i})" style="background:none;border:1px solid var(--border);border-radius:3px;padding:1px 6px;font-size:9px;color:var(--primary-dark);cursor:pointer">技能</button>
+        </div>`;
     }
     container.appendChild(div);
   }
@@ -442,6 +933,201 @@ function closeSkillModal() {
   modalSlotIdx = -1;
   allSkills = [];
   selectedSkills = [];
+}
+
+// ══════════════════════════════
+// 个体值和性格配置弹窗
+// ══════════════════════════════
+async function openConfigModal(slotIdx) {
+  const t = team[slotIdx];
+  if (!t) return;
+  configSlotIdx = slotIdx;
+
+  // 获取精灵完整数据
+  const pokemon = allPokemon.find(p => p.name === t.name);
+  if (!pokemon) return;
+  configPokemonData = pokemon;
+
+  // 填充精灵信息
+  document.getElementById('config-modal-title').textContent = `配置精灵 — ${t.name}`;
+  document.getElementById('cfg-pokemon-name').textContent = t.name;
+  document.getElementById('cfg-pokemon-element').textContent = t.element;
+  document.getElementById('cfg-pokemon-ability').textContent = t.ability || '—';
+
+  // 初始化个体值选择
+  selectedIvs = { hp: false, atk: false, def: false, spatk: false, spdef: false, speed: false };
+  document.querySelectorAll('.iv-checkbox input').forEach(cb => {
+    cb.checked = false;
+  });
+
+  // 如果已有配置，加载
+  if (t.iv_config) {
+    for (const [key, val] of Object.entries(t.iv_config)) {
+      if (val === 60) {
+        selectedIvs[key] = true;
+        const cb = document.querySelector(`.iv-checkbox input[data-iv="${key}"]`);
+        if (cb) cb.checked = true;
+      }
+    }
+  }
+
+  // 初始化后调用 onIvChange 设置禁用状态
+  onIvChange();
+
+  // 初始化性格选择
+  selectedNature = t.nature || '坦率';
+  document.getElementById('cfg-nature').value = selectedNature;
+  updateNatureBonusDisplay();
+
+  // 显示弹窗
+  document.getElementById('config-modal-bg').classList.add('open');
+
+  // 计算并显示战斗值
+  await calcAndDisplayStats();
+}
+
+function closeConfigModal() {
+  document.getElementById('config-modal-bg').classList.remove('open');
+  configSlotIdx = -1;
+  configPokemonData = null;
+}
+
+function onIvChange() {
+  const errorEl = document.getElementById('iv-error');
+
+  // 同步 DOM 状态到 selectedIvs
+  document.querySelectorAll('.iv-checkbox input').forEach(cb => {
+    const key = cb.getAttribute('data-iv');
+    selectedIvs[key] = cb.checked;
+  });
+
+  const checked = Object.values(selectedIvs).filter(v => v).length;
+
+  if (checked >= 3) {
+    // 已选 3 项，禁用未选中的复选框
+    document.querySelectorAll('.iv-checkbox input').forEach(cb => {
+      const key = cb.getAttribute('data-iv');
+      cb.disabled = !selectedIvs[key];
+    });
+    errorEl.textContent = checked > 3 ? '只能选择 3 项！' : '';
+  } else {
+    // 少于 3 项，启用所有复选框
+    document.querySelectorAll('.iv-checkbox input').forEach(cb => {
+      cb.disabled = false;
+    });
+    errorEl.textContent = '';
+  }
+
+  calcAndDisplayStats();
+}
+
+function onNatureChange() {
+  selectedNature = document.getElementById('cfg-nature').value;
+  updateNatureBonusDisplay();
+  calcAndDisplayStats();
+}
+
+function updateNatureBonusDisplay() {
+  const bonusEl = document.getElementById('cfg-nature-bonus');
+  const natureInfo = NATURE_BONUS[selectedNature] || { bonus: {}, desc: '无修正' };
+  bonusEl.textContent = natureInfo.desc || '';
+}
+
+// 性格加成表（与后端 pokemon_nature_table.py 对应）
+const NATURE_BONUS = {
+  '坦率': { desc: '无修正' },
+  '固执': { desc: '物攻 +20%, 魔攻 -10%' },
+  '勇敢': { desc: '物攻 +20%, 速度 -10%' },
+  '保守': { desc: '魔攻 +20%, 物攻 -10%' },
+  '稳重': { desc: '魔攻 +20%, 物防 -10%' },
+  '冷静': { desc: '魔攻 +20%, 速度 -10%' },
+  '爽朗': { desc: '速度 +20%, 魔攻 -10%' },
+  '急躁': { desc: '速度 +20%, 物防 -10%' },
+  '开朗': { desc: '速度 +20%, 魔攻 -10%' },
+  '顽皮': { desc: '物攻 +20%, 魔防 -10%' },
+  '自大': { desc: '物防 +20%, 魔攻 -10%' },
+  '谨慎': { desc: '物防 +20%, 魔攻 -10%' },
+  '温和': { desc: '魔防 +20%, 物攻 -10%' },
+  '沉着': { desc: '魔防 +20%, 物攻 -10%' },
+  '内敛': { desc: '魔攻 +20%, 物攻 -10%' },
+  '慢吞吞': { desc: '魔攻 +20%, 物防 -10%' },
+  '害羞': { desc: '魔攻 +20%, 魔防 -10%' },
+  '认真': { desc: '无修正' },
+  '勤奋': { desc: '无修正' },
+  '实干': { desc: '无修正' },
+};
+
+async function calcAndDisplayStats() {
+  if (!configPokemonData) return;
+
+  // 构建 IV 配置
+  const ivConfig = {
+    hp: selectedIvs.hp ? 60 : 0,
+    atk: selectedIvs.atk ? 60 : 0,
+    def: selectedIvs.def ? 60 : 0,
+    spatk: selectedIvs.spatk ? 60 : 0,
+    spdef: selectedIvs.spdef ? 60 : 0,
+    speed: selectedIvs.speed ? 60 : 0,
+  };
+
+  try {
+    // API 需要种族值参数
+    const url = `/api/pokemon/calc-stats?` +
+      `base_hp=${configPokemonData.base_hp || 0}&` +
+      `base_atk=${configPokemonData.base_atk || 0}&` +
+      `base_spatk=${configPokemonData.base_spatk || 0}&` +
+      `base_def=${configPokemonData.base_def || 0}&` +
+      `base_spdef=${configPokemonData.base_spdef || 0}&` +
+      `base_speed=${configPokemonData.base_speed || 0}&` +
+      `iv_hp=${ivConfig.hp}&` +
+      `iv_atk=${ivConfig.atk}&` +
+      `iv_spatk=${ivConfig.spatk}&` +
+      `iv_def=${ivConfig.def}&` +
+      `iv_spdef=${ivConfig.spdef}&` +
+      `iv_speed=${ivConfig.speed}&` +
+      `nature=${encodeURIComponent(selectedNature)}`;
+
+    const res = await fetch(url);
+    const stats = await res.json();
+
+    document.getElementById('stat-hp').textContent = Math.round(stats.hp);
+    document.getElementById('stat-atk').textContent = Math.round(stats.atk);
+    document.getElementById('stat-def').textContent = Math.round(stats.def);
+    document.getElementById('stat-spatk').textContent = Math.round(stats.spatk);
+    document.getElementById('stat-spdef').textContent = Math.round(stats.spdef);
+    document.getElementById('stat-speed').textContent = Math.round(stats.speed);
+  } catch (e) {
+    console.error('计算战斗值失败:', e);
+  }
+}
+
+function confirmConfig() {
+  if (configSlotIdx < 0 || !team[configSlotIdx]) return;
+
+  // 验证个体值
+  const selectedCount = Object.values(selectedIvs).filter(v => v).length;
+  if (selectedCount !== 3) {
+    document.getElementById('iv-error').textContent = '请选择恰好 3 项！';
+    return;
+  }
+
+  // 保存配置
+  const ivConfig = {
+    hp: selectedIvs.hp ? 60 : 0,
+    atk: selectedIvs.atk ? 60 : 0,
+    def: selectedIvs.def ? 60 : 0,
+    spatk: selectedIvs.spatk ? 60 : 0,
+    spdef: selectedIvs.spdef ? 60 : 0,
+    speed: selectedIvs.speed ? 60 : 0,
+  };
+
+  team[configSlotIdx].iv_config = ivConfig;
+  team[configSlotIdx].nature = selectedNature;
+
+  closeConfigModal();
+  renderTeamSlots();
+  // 配置完成后自动打开技能选择
+  setTimeout(() => openSkillModal(configSlotIdx), 100);
 }
 
 function renderSkillList(q) {
@@ -552,7 +1238,12 @@ function showHint(msg) {
 function goToBattle() {
   const err = validate();
   if (err) { showHint(err); return; }
-  const teamData = team.filter(Boolean).map(t => ({ name: t.name, skills: t.skills }));
+  const teamData = team.filter(Boolean).map(t => ({
+    name: t.name,
+    skills: t.skills,
+    iv_config: t.iv_config,
+    nature: t.nature,
+  }));
   sessionStorage.setItem('playerTeam', JSON.stringify(teamData));
   sessionStorage.setItem('aiTeam', selectedAI);
   window.location.href = '/battle';
@@ -581,6 +1272,22 @@ document.getElementById('skill-search-input').addEventListener('input', function
 
 document.getElementById('skill-modal-bg').addEventListener('click', function(e) {
   if (e.target === this) closeSkillModal();
+});
+
+document.getElementById('config-modal-bg').addEventListener('click', function(e) {
+  if (e.target === this) closeConfigModal();
+});
+
+document.getElementById('save-modal-bg').addEventListener('click', function(e) {
+  if (e.target === this) closeSaveModal();
+});
+
+document.getElementById('load-modal-bg').addEventListener('click', function(e) {
+  if (e.target === this) closeLoadModal();
+});
+
+document.getElementById('save-team-name').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') confirmSaveTeam();
 });
 
 // ══════════════════════════════

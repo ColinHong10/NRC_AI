@@ -305,7 +305,7 @@ def _snapshot(state: BattleState) -> dict:
     }
     for team_key, team_list in [("a", state.team_a), ("b", state.team_b)]:
         for i, p in enumerate(team_list):
-            snap[f"{team_key}_{i}_hp"]       = max(0, p.current_hp)
+            snap[f"{team_key}_{i}_hp"]       = max(0, round(p.current_hp, 2))
             snap[f"{team_key}_{i}_energy"]   = p.energy
             snap[f"{team_key}_{i}_fainted"]  = p.is_fainted
             snap[f"{team_key}_{i}_poison"]   = p.poison_stacks
@@ -339,14 +339,14 @@ def _diff_to_logs(before: dict, after: dict, state: BattleState) -> List[str]:
 
             hp_before = before.get(f"{team}_{i}_hp", 0)
             hp_after  = after.get(f"{team}_{i}_hp", 0)
-            dmg = hp_before - hp_after
+            dmg = round(hp_before - hp_after, 2)
             if dmg > 0:
                 logs.append(
-                    f"  💥 {label} {name} 受到 {dmg} 伤害 → 剩余 HP {hp_after}/{max_hp}"
+                    f"  💥 {label} {name} 受到 {dmg} 伤害 → 剩余 HP {round(hp_after, 2)}/{max_hp}"
                 )
             elif dmg < 0:
                 logs.append(
-                    f"  💚 {label} {name} 回复 {-dmg} HP → {hp_after}/{max_hp}"
+                    f"  💚 {label} {name} 回复 {-dmg} HP → {round(hp_after, 2)}/{max_hp}"
                 )
 
             # 倒地
@@ -488,11 +488,12 @@ def serialize_pokemon(p, is_current=False):
     if cute > 0:
         ability_info.append(f"萌化×{cute}")
 
+    import math
     return {
         "name":            p.name,
         "type":            p.pokemon_type.value,
-        "hp":              p.hp,
-        "current_hp":      max(0, p.current_hp),
+        "hp":              math.floor(p.hp * 100) / 100,
+        "current_hp":      max(0, math.floor(p.current_hp * 100) / 100),
         "energy":          p.energy,
         "is_fainted":      p.is_fainted,
         "ability":         p.ability,
@@ -790,8 +791,10 @@ async def start_custom_battle(ws: WebSocket, msg: dict):
             errors.append(f"{pname} 未配置技能")
             continue
 
-        # 从种族值计算战斗五维（使用默认 IV 和坦率性格）
+        # 从种族值计算战斗五维（使用配置的 IV 和性格）
         from src.pokemon_db import calc_combat_stats
+        iv_config = entry.get("iv_config")
+        nature = entry.get("nature", "坦率")
         stats = calc_combat_stats(
             base_hp=data["生命种族值"],
             base_atk=data["物攻种族值"],
@@ -799,6 +802,8 @@ async def start_custom_battle(ws: WebSocket, msg: dict):
             base_def=data["物防种族值"],
             base_spdef=data["魔防种族值"],
             base_speed=data["速度种族值"],
+            iv_config=iv_config,
+            nature_name=nature,
         )
 
         p = Pokemon(
@@ -808,7 +813,8 @@ async def start_custom_battle(ws: WebSocket, msg: dict):
             sp_defense=stats["spdef"], speed=stats["speed"],
             ability=ability, skills=skills,
         )
-        p.ability_effects = ability_effects
+        # 加载特性效果
+        p.ability_effects = load_ability_effects(ability) if ability else []
         player_team.append(p)
 
     if errors:
@@ -894,8 +900,8 @@ async def receive_player_action(ws: WebSocket, msg: dict):
     session.add_log("")
     session.add_log(f"─── 回合 {state.turn} ───")
     session.add_log(
-        f"  📌 当前: 🧑{pa.name}（HP {pa.current_hp}/{pa.hp} E={pa.energy}）"
-        f"  vs  🤖{pb.name}（HP {pb.current_hp}/{pb.hp} E={pb.energy}）"
+        f"  📌 当前: 🧑{pa.name}（HP {round(pa.current_hp, 2)}/{pa.hp} E={pa.energy}）"
+        f"  vs  🤖{pb.name}（HP {round(pb.current_hp, 2)}/{pb.hp} E={pb.energy}）"
     )
 
     # ── 玩家行动声明 ──
@@ -996,8 +1002,8 @@ async def receive_player_action(ws: WebSocket, msg: dict):
     pa2 = state.team_a[state.current_a]
     pb2 = state.team_b[state.current_b]
     session.add_log(
-        f"  📊 结算 → 🧑{pa2.name} HP:{max(0,pa2.current_hp)}/{pa2.hp} E={pa2.energy}"
-        f"  |  🤖{pb2.name} HP:{max(0,pb2.current_hp)}/{pb2.hp} E={pb2.energy}"
+        f"  📊 结算 → 🧑{pa2.name} HP:{round(max(0, pa2.current_hp), 2)}/{pa2.hp} E={pa2.energy}"
+        f"  |  🤖{pb2.name} HP:{round(max(0, pb2.current_hp), 2)}/{pb2.hp} E={pb2.energy}"
     )
     session.add_log(f"  🔷 MP → 你={state.mp_a} | AI={state.mp_b}")
 
@@ -1276,6 +1282,10 @@ def _has_counter(s) -> bool:
 # REST API — 阵容搭配器数据接口
 # ═══════════════════════════════════════
 
+# 内存存储队伍（临时，后续可改为数据库持久化）
+_teams_cache: dict[str, dict] = {}
+
+
 @app.get("/api/pokemon/list")
 async def api_pokemon_list(q: str = ""):
     """搜索精灵列表（支持名称关键词/属性筛选），返回全部匹配结果"""
@@ -1365,6 +1375,54 @@ async def api_pokemon_skills(name: str):
             "effect_summary": effect_view["summary"],
             "has_effects": effect_view["has_effects"],
         })
+    return JSONResponse(result)
+
+
+@app.get("/api/pokemon/calc-stats")
+async def api_calc_combat_stats(
+    base_hp: int, base_atk: int, base_spatk: int,
+    base_def: int, base_spdef: int, base_speed: int,
+    iv_hp: int = 0, iv_atk: int = 0, iv_spatk: int = 0,
+    iv_def: int = 0, iv_spdef: int = 0, iv_speed: int = 0,
+    nature: str = "坦率",
+):
+    """计算精灵战斗五维（根据种族值、个体值、性格）"""
+    _ensure_loaded()
+    from src.pokemon_db import calc_combat_stats
+
+    stats = calc_combat_stats(
+        base_hp=base_hp, base_atk=base_atk, base_spatk=base_spatk,
+        base_def=base_def, base_spdef=base_spdef, base_speed=base_speed,
+        iv_config={
+            "hp": iv_hp, "atk": iv_atk, "spatk": iv_spatk,
+            "def": iv_def, "spdef": iv_spdef, "speed": iv_speed,
+        },
+        nature_name=nature,
+    )
+    return JSONResponse({
+        "hp": round(stats["hp"], 1),
+        "atk": round(stats["atk"], 1),
+        "spatk": round(stats["spatk"], 1),
+        "def": round(stats["def"], 1),
+        "spdef": round(stats["spdef"], 1),
+        "speed": round(stats["speed"], 1),
+    })
+
+
+@app.get("/api/nature/list")
+async def api_nature_list():
+    """获取所有性格列表及加成"""
+    from src.pokemon_nature_table import NATURE_BONUSES, ALL_NATURES, is_neutral_nature
+
+    result = []
+    for name in ALL_NATURES:
+        bonus = NATURE_BONUSES[name]
+        result.append({
+            "name": name,
+            "is_neutral": is_neutral_nature(name),
+            "bonuses": bonus,
+        })
+
     return JSONResponse(result)
 
 
