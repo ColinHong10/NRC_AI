@@ -358,38 +358,6 @@ def import_skills(conn):
     return count + extra
 
 
-def recalc_combat_stats(conn):
-    """用正确的 PvP 公式重算所有精灵的战斗五维并写回 DB"""
-    import sys
-    sys.path.insert(0, os.path.join(BASE_DIR, "src"))
-    from pokemon_db import calc_combat_stats
-
-    c = conn.cursor()
-    c.execute("SELECT id, base_hp, base_atk, base_spatk, base_def, base_spdef, base_speed FROM pokemon")
-    rows = c.fetchall()
-    count = 0
-    for r in rows:
-        pid = r[0]
-        stats = calc_combat_stats(
-            base_hp=r[1], base_atk=r[2], base_spatk=r[3],
-            base_def=r[4], base_spdef=r[5], base_speed=r[6],
-        )
-        c.execute("""
-            UPDATE pokemon SET
-                stat_hp=?, stat_atk=?, stat_spatk=?,
-                stat_def=?, stat_spdef=?, stat_speed=?
-            WHERE id=?
-        """, (
-            round(stats["hp"], 1), round(stats["atk"], 1),
-            round(stats["spatk"], 1), round(stats["def"], 1),
-            round(stats["spdef"], 1), round(stats["speed"], 1),
-            pid,
-        ))
-        count += 1
-    conn.commit()
-    print(f"[OK] Recalculated combat stats for {count} pokemon (new PvP formula)")
-
-
 def print_stats(conn):
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM pokemon")
@@ -469,7 +437,6 @@ def main():
     else:
         import_skills(conn)
 
-    recalc_combat_stats(conn)
     print_stats(conn)
 
     conn.close()

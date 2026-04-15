@@ -4,10 +4,10 @@
 提供 TeamBuilder 类用于创建标准对战队伍。
 """
 
-from typing import List
+from typing import List, Dict, Optional
 
 from src.models import Pokemon, Type
-from src.pokemon_db import get_pokemon
+from src.pokemon_db import get_pokemon, calc_combat_stats
 from src.skill_db import get_skill, load_ability_effects
 from src.effect_models import E
 
@@ -26,23 +26,45 @@ class TeamBuilder:
     }
 
     @staticmethod
-    def _p(name: str, skill_names: list) -> Pokemon:
-        """根据精灵名称从数据库获取六维数据，构造 Pokemon 对象"""
+    def _p(name: str, skill_names: list,
+           iv_config: Optional[Dict[str, int]] = None,
+           nature: str = "坦率") -> Pokemon:
+        """
+        根据精灵名称从数据库获取种族值，计算战斗五维构造 Pokemon 对象。
+
+        参数:
+          name: 精灵名称
+          skill_names: 技能名称列表
+          iv_config: 个体值配置 {"hp":60,"atk":60,"spatk":0,"def":0,"spdef":0,"speed":60}
+                     默认全 0
+          nature: 性格名称（25 种性格之一），默认"坦率"（无修正）
+        """
         data = get_pokemon(name)
         if data:
             ptype_str = data["属性"]
             ability = data["特性"]
-            hp = int(data["生命值"])
-            atk = int(data["物攻"])
-            dfn = int(data["物防"])
-            spatk = int(data["魔攻"])
-            spdef = int(data["魔防"])
-            spd = int(data["速度"])
+            # 从种族值计算战斗五维（保留小数）
+            stats = calc_combat_stats(
+                base_hp=data["生命种族值"],
+                base_atk=data["物攻种族值"],
+                base_spatk=data["魔攻种族值"],
+                base_def=data["物防种族值"],
+                base_spdef=data["魔防种族值"],
+                base_speed=data["速度种族值"],
+                iv_config=iv_config,
+                nature_name=nature,
+            )
+            hp = stats["hp"]
+            atk = stats["atk"]
+            dfn = stats["def"]
+            spatk = stats["spatk"]
+            spdef = stats["spdef"]
+            spd = stats["speed"]
         else:
             print(f"[WARN] 精灵 '{name}' 未在数据库中找到，使用默认属性")
             ptype_str = "普通"
             ability = "未知"
-            hp, atk, dfn, spatk, spdef, spd = 500, 350, 350, 350, 350, 350
+            hp, atk, dfn, spatk, spdef, spd = 500.0, 350.0, 350.0, 350.0, 350.0, 350.0
 
         type_enum = TeamBuilder.TYPE_MAP.get(ptype_str, Type.NORMAL)
         skills = [get_skill(n) for n in skill_names]
@@ -50,10 +72,23 @@ class TeamBuilder:
         # 加载特性效果
         ability_effects = load_ability_effects(ability) if ability else []
 
-        p = Pokemon(name=name, pokemon_type=type_enum,
-                    hp=hp, attack=atk, defense=dfn,
-                    sp_attack=spatk, sp_defense=spdef,
-                    speed=spd, ability=ability, skills=skills)
+        # 构造 Pokemon 对象
+        p = Pokemon(
+            name=name, pokemon_type=type_enum,
+            hp=hp, attack=atk, defense=dfn,
+            sp_attack=spatk, sp_defense=spdef,
+            speed=spd, ability=ability, skills=skills,
+        )
+
+        # 初始化个体值和性格
+        if iv_config:
+            p.iv_hp = iv_config.get("hp", 0)
+            p.iv_atk = iv_config.get("atk", 0)
+            p.iv_spatk = iv_config.get("spatk", 0)
+            p.iv_def = iv_config.get("def", 0)
+            p.iv_spdef = iv_config.get("spdef", 0)
+            p.iv_speed = iv_config.get("speed", 0)
+        p.nature = nature
         p.ability_effects = ability_effects
         # 初始化被动标记（PASSIVE 特性需要在加载时就设置，确保立即生效）
         for ae in ability_effects:

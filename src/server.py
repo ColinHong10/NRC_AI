@@ -789,12 +789,23 @@ async def start_custom_battle(ws: WebSocket, msg: dict):
         if len(skills) < 1:
             errors.append(f"{pname} 未配置技能")
             continue
-        ability_effects = load_ability_effects(ability) if ability else []
+
+        # 从种族值计算战斗五维（使用默认 IV 和坦率性格）
+        from src.pokemon_db import calc_combat_stats
+        stats = calc_combat_stats(
+            base_hp=data["生命种族值"],
+            base_atk=data["物攻种族值"],
+            base_spatk=data["魔攻种族值"],
+            base_def=data["物防种族值"],
+            base_spdef=data["魔防种族值"],
+            base_speed=data["速度种族值"],
+        )
+
         p = Pokemon(
             name=pname, pokemon_type=type_enum,
-            hp=int(data["生命值"]), attack=int(data["物攻"]),
-            defense=int(data["物防"]), sp_attack=int(data["魔攻"]),
-            sp_defense=int(data["魔防"]), speed=int(data["速度"]),
+            hp=stats["hp"], attack=stats["atk"],
+            defense=stats["def"], sp_attack=stats["spatk"],
+            sp_defense=stats["spdef"], speed=stats["speed"],
             ability=ability, skills=skills,
         )
         p.ability_effects = ability_effects

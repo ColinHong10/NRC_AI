@@ -140,7 +140,7 @@ def _temporary_skill_cost_delta(user: Pokemon, skill: Skill) -> int:
 
 
 def _transform_to_guard_queen(pokemon: Pokemon) -> None:
-    from src.pokemon_db import get_pokemon
+    from src.pokemon_db import get_pokemon, calc_combat_stats
 
     if "棋绮后" in pokemon.name:
         return
@@ -148,13 +148,33 @@ def _transform_to_guard_queen(pokemon: Pokemon) -> None:
     data = get_pokemon(target_name)
     if not data:
         return
+
+    # 从种族值计算战斗五维，保留原个体的 IV 和性格
+    stats = calc_combat_stats(
+        base_hp=data["生命种族值"],
+        base_atk=data["物攻种族值"],
+        base_spatk=data["魔攻种族值"],
+        base_def=data["物防种族值"],
+        base_spdef=data["魔防种族值"],
+        base_speed=data["速度种族值"],
+        iv_config={
+            "hp": pokemon.iv_hp,
+            "atk": pokemon.iv_atk,
+            "spatk": pokemon.iv_spatk,
+            "def": pokemon.iv_def,
+            "spdef": pokemon.iv_spdef,
+            "speed": pokemon.iv_speed,
+        },
+        nature_name=pokemon.nature,
+    )
+
     pokemon.name = target_name
-    pokemon.hp = int(data["生命值"])
-    pokemon.attack = int(data["物攻"])
-    pokemon.sp_attack = int(data["魔攻"])
-    pokemon.defense = int(data["物防"])
-    pokemon.sp_defense = int(data["魔防"])
-    pokemon.speed = int(data["速度"])
+    pokemon.hp = stats["hp"]
+    pokemon.attack = stats["atk"]
+    pokemon.sp_attack = stats["spatk"]
+    pokemon.defense = stats["def"]
+    pokemon.sp_defense = stats["spdef"]
+    pokemon.speed = stats["speed"]
     pokemon.current_hp = pokemon.hp
     pokemon.energy = 10
     pokemon.status = StatusType.NORMAL

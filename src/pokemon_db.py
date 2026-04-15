@@ -1,6 +1,6 @@
 """
-精灵数据库 - 从 SQLite 加载精灵属性和六维数据
-包含 PvP 战斗五维计算（正确公式 + 个体值分配 + 性格修正）
+精灵数据库 - 从 SQLite 加载精灵属性和六维种族值
+战斗五维根据用户配置的个体值和性格实时计算
 """
 import os
 import math
@@ -11,7 +11,7 @@ _conn: Optional[sqlite3.Connection] = None
 _DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "data", "nrc.db")
 
-# 全库速度种族值中位线 (从DB中动态计算后缓存)
+# 全库速度种族值中位线 (从 DB 中动态计算后缓存)
 _speed_median: Optional[float] = None
 
 
@@ -52,46 +52,56 @@ def _get_speed_median() -> float:
 #   HP    = [1.7 × base_hp    + 0.85 × IV + 70] × (1 + mod) + 100
 #   其他  = [1.1 × base_stat  + 0.55 × IV + 10] × (1 + mod) + 50
 #
-# 个体值 (IV): 6的倍数, 范围 48~60, 默认完美=60
-#   - 共6项, 其中3项有IV, 3项IV=0
-#   - 默认分配策略: 按精灵定位选最重要的3项
-#
-# 性格修正 (mod): 五维 (ATK/SPATK/DEF/SPDEF/SPD) 中
-#   - 1项 +20%, 1项 -10%, 其余 0%
-#   - HP 也可以获得性格修正 (玩家自选)
-#   - 默认: 速度种族值 ≥ 中位线 → SPD +20%
-#           物攻/魔攻 较小者 → -10%
+# 个体值 (IV): 用户配置，6 项属性中选择 3 项为 60，其余 3 项为 0
+# 性格修正：从 pokemon_nature_table.py 获取，25 种性格之一
 # ────────────────────────────────────────────────────────────
 
 def calc_combat_stats(
     base_hp: int, base_atk: int, base_spatk: int,
     base_def: int, base_spdef: int, base_speed: int,
     iv_config: Optional[Dict[str, int]] = None,
-    nature_config: Optional[Dict[str, float]] = None,
+    nature_name: str = "坦率",
 ) -> Dict[str, float]:
     """
     计算 PvP 战斗五维。
 
     参数:
       base_*: 种族值
-      iv_config: 个体值配置 {"hp":60,"atk":0,...}, 默认自动分配
-      nature_config: 性格修正 {"hp":0,"atk":-0.1,...}, 默认自动分配
+      iv_config: 个体值配置 {"hp":60,"atk":60,"spatk":0,"def":0,"spdef":0,"speed":60}
+                 默认全 0（用户未配置时）
+      nature_name: 性格名称（25 种性格之一），默认"坦率"（无修正）
 
     返回:
       {"hp":..., "atk":..., "spatk":..., "def":..., "spdef":..., "speed":...}
     """
+    from src.pokemon_nature_table import get_nature_bonus
+
     bases = {
         "hp": base_hp, "atk": base_atk, "spatk": base_spatk,
         "def": base_def, "spdef": base_spdef, "speed": base_speed,
     }
 
-    # ── 自动分配个体值 (IV) ──
+    # 个体值配置：用户未传入时使用默认全 0
     if iv_config is None:
-        iv_config = _auto_iv(bases)
+        iv_config = {"hp": 0, "atk": 0, "spatk": 0, "def": 0, "spdef": 0, "speed": 0}
 
-    # ── 自动分配性格修正 ──
-    if nature_config is None:
-        nature_config = _auto_nature(bases)
+    # 从性格表获取加成
+    try:
+        nature_bonus = get_nature_bonus(nature_name)
+    except KeyError:
+        # 未知性格时使用坦率（无修正）
+        nature_bonus = {"atk": 0.0, "defense": 0.0, "sp_atk": 0.0, "sp_defense": 0.0, "speed": 0.0}
+
+    # 性格加成字段名映射：pokemon_nature_table.py → calc_combat_stats
+    # atk → atk, defense → def, sp_atk → spatk, sp_defense → spdef, speed → speed
+    nature_config = {
+        "hp": 0.0,
+        "atk": nature_bonus.get("atk", 0.0),
+        "spatk": nature_bonus.get("sp_atk", 0.0),
+        "def": nature_bonus.get("defense", 0.0),
+        "spdef": nature_bonus.get("sp_defense", 0.0),
+        "speed": nature_bonus.get("speed", 0.0),
+    }
 
     # ── 计算最终战斗五维 ──
     result = {}
@@ -111,9 +121,11 @@ def calc_combat_stats(
 def _auto_iv(bases: Dict[str, int]) -> Dict[str, int]:
     """
     默认 IV 分配策略 (完美资质 IV=60):
-    - 输出手(物攻>魔攻 → 物攻手, 反之魔攻手):
-        HP + 主攻(atk或spatk) + speed 各给60
-    - 物攻=魔攻: HP + atk + speed
+    - 输出手 (物攻>魔攻 → 物攻手，反之魔攻手):
+        HP + 主攻 (atk 或 spatk) + speed 各给 60
+    - 物攻=魔攻：HP + atk + speed
+
+    已弃用：仅用于向后兼容
     """
     iv = {"hp": 0, "atk": 0, "spatk": 0, "def": 0, "spdef": 0, "speed": 0}
     iv["hp"] = 60
@@ -130,7 +142,9 @@ def _auto_nature(bases: Dict[str, int]) -> Dict[str, float]:
     默认性格修正策略:
     - +20%: 速度种族值 ≥ 中位线 → speed; 否则给主攻
     - -10%: 物攻/魔攻中较小者
-    - 物攻=魔攻时不扣减任何一项(两项都不减)
+    - 物攻=魔攻时不扣减任何一项 (两项都不减)
+
+    已弃用：仅用于向后兼容
     """
     nature = {"hp": 0.0, "atk": 0.0, "spatk": 0.0, "def": 0.0, "spdef": 0.0, "speed": 0.0}
     median = _get_speed_median()
@@ -139,18 +153,18 @@ def _auto_nature(bases: Dict[str, int]) -> Dict[str, float]:
     if bases["speed"] >= median:
         nature["speed"] = 0.20
     else:
-        # 速度低于中位线 → 给主攻+20%
+        # 速度低于中位线 → 给主攻 +20%
         if bases["atk"] >= bases["spatk"]:
             nature["atk"] = 0.20
         else:
             nature["spatk"] = 0.20
 
-    # -10% 分配: 物攻/魔攻较小者
+    # -10% 分配：物攻/魔攻较小者
     if bases["atk"] < bases["spatk"]:
         nature["atk"] = -0.10
     elif bases["spatk"] < bases["atk"]:
         nature["spatk"] = -0.10
-    # 物攻=魔攻: 不减
+    # 物攻=魔攻：不减
 
     return nature
 
@@ -161,14 +175,14 @@ def load_pokemon_db(filepath=None):
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM pokemon")
     count = c.fetchone()[0]
-    print(f"[OK] 精灵数据库已加载: {count} 只精灵 (战斗五维由公式实时计算)")
+    print(f"[OK] 精灵数据库已加载：{count} 只精灵 (战斗五维由公式实时计算)")
 
 
 def get_pokemon(name: str) -> Optional[Dict]:
     """
     根据名称获取精灵数据。
     支持模糊匹配：精确 > 前缀 > 包含。
-    返回 dict 兼容旧接口, 战斗五维由公式计算。
+    返回 dict 兼容旧接口，只包含种族值，战斗五维需调用 calc_combat_stats 计算。
     """
     conn = _get_conn()
     c = conn.cursor()
@@ -284,25 +298,14 @@ def get_pokemon_skills(name: str) -> List[Dict]:
 
 
 def _row_to_dict(row) -> Dict:
-    """将 sqlite3.Row 转为兼容旧接口的 dict, 战斗五维由公式实时计算"""
-    # 用公式计算战斗五维
-    stats = calc_combat_stats(
-        base_hp=row["base_hp"], base_atk=row["base_atk"],
-        base_spatk=row["base_spatk"], base_def=row["base_def"],
-        base_spdef=row["base_spdef"], base_speed=row["base_speed"],
-    )
+    """将 sqlite3.Row 转为兼容旧接口的 dict，只返回种族值"""
+    # 只返回种族值，不计算战斗值
     return {
         "编号": row["id"],
         "名称": row["name"],
         "属性": row["element"],
         "进化阶段": row["evo_stage"],
         "特性": row["ability"],
-        "生命值": stats["hp"],
-        "物攻": stats["atk"],
-        "魔攻": stats["spatk"],
-        "物防": stats["def"],
-        "魔防": stats["spdef"],
-        "速度": stats["speed"],
         "生命种族值": row["base_hp"],
         "物攻种族值": row["base_atk"],
         "魔攻种族值": row["base_spatk"],
