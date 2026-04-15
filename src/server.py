@@ -18,8 +18,9 @@ from src.skill_db import load_skills
 from src.models import BattleState, StatusType
 from src.effect_models import E, Timing
 from src.effect_engine import EffectExecutor
+from src.team_builder import TeamBuilder
 from src.battle import (
-    TeamBuilder, execute_full_turn, check_winner,
+    execute_full_turn, check_winner,
     auto_switch, get_actions
 )
 from src.mcts import MCTS, EXPERIENCE_A, EXPERIENCE_B
@@ -764,7 +765,7 @@ async def start_custom_battle(ws: WebSocket, msg: dict):
     ai_team_key     = msg.get("ai_team", "wing")   # "toxic" 或 "wing"
 
     # ── 构建玩家阵容 ──
-    from src.battle import TeamBuilder
+    from src.team_builder import TeamBuilder
     from src.skill_db import get_skill
     from src.pokemon_db import get_pokemon
     from src.models import Pokemon, Type
