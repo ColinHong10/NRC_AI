@@ -173,6 +173,41 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
 /* 验证提示 */
 #validate-hint { font-size: 11px; color: var(--hp-red); min-height: 16px; padding: 0 16px 8px; }
 
+/* 导入/导出/预设工具栏 */
+#team-tools { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px; flex-shrink: 0; }
+.tool-btn {
+  background: var(--bg-input); border: 1.5px solid var(--border); border-radius: var(--r-sm);
+  padding: 4px 10px; font-size: 10px; font-weight: 600; cursor: pointer;
+  color: var(--text-secondary); transition: all .15s; display: flex; align-items: center; gap: 4px;
+}
+.tool-btn:hover { border-color: var(--primary); color: var(--primary-dark); background: rgba(245,166,35,.08); }
+.preset-btn { background: rgba(245,166,35,.06); }
+
+/* 导入弹窗 */
+#import-modal-bg { display: none; position: fixed; inset: 0; background: rgba(74,55,40,.5); backdrop-filter: blur(4px); z-index: 150; align-items: center; justify-content: center; }
+#import-modal-bg.open { display: flex; }
+#import-modal {
+  background: var(--bg-page); border: 2px solid var(--border); border-radius: var(--r-xl);
+  width: 480px; max-height: 70vh; padding: 20px; box-shadow: var(--shadow-lg);
+}
+#import-textarea {
+  width: 100%; height: 200px; border: 2px solid var(--border); border-radius: var(--r-md);
+  padding: 10px; font-size: 12px; font-family: monospace; color: var(--text-primary);
+  background: var(--bg-input); resize: vertical; outline: none;
+}
+#import-textarea:focus { border-color: var(--primary); }
+#import-error { font-size: 11px; color: var(--hp-red); min-height: 16px; margin-top: 6px; }
+
+/* 已保存阵容列表 */
+.saved-team-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); margin-bottom: 4px; font-size: 11px; cursor: pointer;
+  transition: background .12s;
+}
+.saved-team-row:hover { background: var(--bg-card); }
+.saved-team-name { font-weight: 600; flex: 1; }
+.saved-team-del { color: var(--hp-red); cursor: pointer; font-size: 12px; }
+
 /* loading */
 #loading { position: fixed; inset: 0; background: var(--bg-page); display: flex; align-items: center; justify-content: center; z-index: 200; flex-direction: column; gap: 12px; }
 #loading.hide { display: none; }
@@ -241,6 +276,14 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
       </div>
     </div>
     <div id="team-slots"></div>
+    <div id="team-tools">
+      <button class="tool-btn" onclick="exportTeamJSON()">📋 导出JSON</button>
+      <button class="tool-btn" onclick="openImportModal()">📥 导入</button>
+      <button class="tool-btn" onclick="saveTeamLocal()">💾 保存</button>
+      <button class="tool-btn" onclick="loadTeamLocal()">📂 加载</button>
+      <button class="tool-btn preset-btn" onclick="loadPreset('toxic')">☠ 预设：毒队</button>
+      <button class="tool-btn preset-btn" onclick="loadPreset('wing')">🦅 预设：翼王队</button>
+    </div>
     <div id="validate-hint"></div>
   </div>
 
@@ -266,6 +309,29 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
     <div id="skill-modal-footer">
       <span id="skill-count-hint">0 / 4 个技能</span>
       <button id="skill-confirm" onclick="confirmSkills()" disabled>确认配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- 导入弹窗 -->
+<div id="import-modal-bg">
+  <div id="import-modal">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <span style="font-family:'RocoTitle','RocoBody',system-ui,sans-serif;font-size:14px;font-weight:700;color:var(--text-primary)">导入阵容</span>
+      <button onclick="closeImportModal()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px">✕</button>
+    </div>
+    <div style="font-size:10px;color:var(--text-secondary);margin-bottom:8px">
+      粘贴 JSON 格式：<code>[{name:"精灵名", skills:["技能1","技能2","技能3","技能4"]}, ...]</code>
+    </div>
+    <textarea id="import-textarea" placeholder='[{"name":"千棘盔","skills":["技能1","技能2","技能3","技能4"]}]'></textarea>
+    <div id="import-error"></div>
+    <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+      <button class="tool-btn" onclick="closeImportModal()">取消</button>
+      <button class="tool-btn" style="background:var(--primary);color:var(--text-light);border-color:var(--primary)" onclick="doImport()">确认导入</button>
+    </div>
+    <div id="saved-teams-section" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-size:10px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">💾 已保存的阵容</div>
+      <div id="saved-teams-list"></div>
     </div>
   </div>
 </div>
@@ -587,6 +653,166 @@ document.getElementById('skill-modal-bg').addEventListener('click', function(e) 
 // 启动
 // ══════════════════════════════
 init();
+
+// ══════════════════════════════
+// 导入 / 导出 / 保存 / 预设
+// ══════════════════════════════
+function exportTeamJSON() {
+  const filled = team.filter(Boolean);
+  if (filled.length === 0) { showHint('阵容为空！'); return; }
+  const json = JSON.stringify(filled.map(t => ({ name: t.name, skills: t.skills })), null, 2);
+  navigator.clipboard.writeText(json).then(() => {
+    showHint('✅ 阵容 JSON 已复制到剪贴板！');
+  }).catch(() => {
+    prompt('复制以下内容：', json);
+  });
+}
+
+function openImportModal() {
+  document.getElementById('import-modal-bg').classList.add('open');
+  document.getElementById('import-textarea').value = '';
+  document.getElementById('import-error').textContent = '';
+  renderSavedTeams();
+}
+
+function closeImportModal() {
+  document.getElementById('import-modal-bg').classList.remove('open');
+}
+
+function doImport() {
+  const raw = document.getElementById('import-textarea').value.trim();
+  const errEl = document.getElementById('import-error');
+  if (!raw) { errEl.textContent = '请粘贴 JSON 内容'; return; }
+  try {
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data) || data.length === 0) { errEl.textContent = '需要是一个数组'; return; }
+    if (data.length > 6) { errEl.textContent = '最多 6 只精灵'; return; }
+
+    // 验证每个条目
+    for (const entry of data) {
+      if (!entry.name) { errEl.textContent = `缺少 name 字段`; return; }
+      if (!Array.isArray(entry.skills)) { errEl.textContent = `${entry.name} 的 skills 应为数组`; return; }
+    }
+
+    // 查找精灵信息
+    const newTeam = [];
+    for (const entry of data) {
+      const poke = allPokemon.find(p => p.name === entry.name);
+      if (!poke) { errEl.textContent = `未找到精灵：${entry.name}`; return; }
+      newTeam.push({
+        name: poke.name, element: poke.element, ability: poke.ability,
+        bst: poke.base_total, skills: entry.skills.slice(0, 4)
+      });
+    }
+
+    // 填充
+    for (let i = 0; i < 6; i++) team[i] = newTeam[i] || null;
+    renderTeamSlots();
+    renderPokemonList();
+    updateStartBtn();
+    closeImportModal();
+    showHint(`✅ 已导入 ${newTeam.length} 只精灵`);
+  } catch(e) {
+    errEl.textContent = `JSON 解析失败：${e.message}`;
+  }
+}
+
+function saveTeamLocal() {
+  const filled = team.filter(Boolean);
+  if (filled.length === 0) { showHint('阵容为空！'); return; }
+  const name = prompt('给阵容起个名字：', `阵容 ${new Date().toLocaleDateString()}`);
+  if (!name) return;
+  const saved = JSON.parse(localStorage.getItem('roco_saved_teams') || '[]');
+  saved.push({
+    name: name,
+    time: Date.now(),
+    team: filled.map(t => ({ name: t.name, skills: t.skills }))
+  });
+  localStorage.setItem('roco_saved_teams', JSON.stringify(saved));
+  showHint(`✅ 阵容「${name}」已保存`);
+}
+
+function loadTeamLocal() {
+  openImportModal();
+}
+
+function renderSavedTeams() {
+  const container = document.getElementById('saved-teams-list');
+  container.innerHTML = '';
+  const saved = JSON.parse(localStorage.getItem('roco_saved_teams') || '[]');
+  if (saved.length === 0) {
+    container.innerHTML = '<div style="font-size:10px;color:var(--text-muted)">暂无保存的阵容</div>';
+    return;
+  }
+  saved.forEach((s, i) => {
+    const div = document.createElement('div');
+    div.className = 'saved-team-row';
+    const names = s.team.map(t => t.name).join('、');
+    div.innerHTML = `
+      <span class="saved-team-name">${s.name}</span>
+      <span style="font-size:9px;color:var(--text-muted);flex:2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${names}</span>
+      <span class="saved-team-del" onclick="event.stopPropagation();deleteSavedTeam(${i})" title="删除">✕</span>`;
+    div.onclick = () => {
+      document.getElementById('import-textarea').value = JSON.stringify(s.team, null, 2);
+      doImport();
+    };
+    container.appendChild(div);
+  });
+}
+
+function deleteSavedTeam(idx) {
+  const saved = JSON.parse(localStorage.getItem('roco_saved_teams') || '[]');
+  saved.splice(idx, 1);
+  localStorage.setItem('roco_saved_teams', JSON.stringify(saved));
+  renderSavedTeams();
+}
+
+// 预设阵容
+const PRESET_TEAMS = {
+  toxic: [
+    { name: '千棘盔', skills: ['棘刺', '溶解液', '光合作用', '食腐'] },
+    { name: '琉璃水母', skills: ['湿润印记', '速冻', '蓄水', '冰锋横扫'] },
+    { name: '秩序鱿墨', skills: ['降灵', '龙威', '漫反射', '暴风眼'] },
+  ],
+  wing: [
+    { name: '圣羽翼王', skills: ['风起', '攻击场地', '主场优势', '钢钻'] },
+    { name: '翠顶夫人', skills: ['光合作用', '示弱', '退化', '棘刺'] },
+    { name: '声波缇塔', skills: ['蓄势待发', '增程电池', '炎爆术', '龙威'] },
+  ],
+};
+
+function loadPreset(key) {
+  const preset = PRESET_TEAMS[key];
+  if (!preset) return;
+  const data = JSON.stringify(preset);
+  document.getElementById('import-textarea').value = data;
+  // 直接导入
+  const errEl = document.getElementById('import-error');
+  errEl.textContent = '';
+  try {
+    const arr = JSON.parse(data);
+    const newTeam = [];
+    for (const entry of arr) {
+      const poke = allPokemon.find(p => p.name === entry.name);
+      if (!poke) { showHint(`预设中未找到：${entry.name}，请确保数据已加载`); return; }
+      newTeam.push({
+        name: poke.name, element: poke.element, ability: poke.ability,
+        bst: poke.base_total, skills: entry.skills.slice(0, 4)
+      });
+    }
+    for (let i = 0; i < 6; i++) team[i] = newTeam[i] || null;
+    renderTeamSlots();
+    renderPokemonList();
+    updateStartBtn();
+    showHint(`✅ 已加载预设：${key === 'toxic' ? '毒队' : '翼王队'}（${newTeam.length}只）`);
+  } catch(e) {
+    showHint('预设加载失败');
+  }
+}
+
+document.getElementById('import-modal-bg').addEventListener('click', function(e) {
+  if (e.target === this) closeImportModal();
+});
 </script>
 </body>
 </html>

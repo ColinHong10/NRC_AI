@@ -166,6 +166,7 @@ class Skill:
 
     # ── 新引擎字段 ──
     effects: List[Any] = field(default_factory=list)  # List[EffectTag], 有值则走新引擎
+    description: str = ""  # 技能描述（来自 DB）
 
     def copy(self):
         s = Skill(
@@ -206,6 +207,7 @@ class Skill:
             counter_status_freeze_stacks=self.counter_status_freeze_stacks,
             counter_skill_cooldown=self.counter_skill_cooldown,
             counter_damage_reflect=self.counter_damage_reflect,
+            description=self.description,
         )
         s.effects = [e.copy() for e in self.effects] if self.effects else []
         if hasattr(self, "_base_energy_cost"):

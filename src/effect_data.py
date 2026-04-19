@@ -892,6 +892,33 @@ SKILL_EFFECTS = {
     # 随机变技能（过于特殊，当前不实现）
     # 取念: 每回合随机变成敌方技能
     # 复写: 每回合随机变成未携带技能
+
+    # 折射: 造成魔伤，根据携带的其他技能属性动态附加不同效果
+    "折射": [
+        SE(SkillTiming.ON_USE, [
+            T(E.DAMAGE),
+            T(E.REFRACT_BY_CARRY, map={
+                "光": {"spatk": 0.4},                             # +40% 魔攻
+                "水": {"cost_reduce": 1},                         # 能耗减1
+                "电": {"speed": 0.5},                             # +50 速度
+                "草": {"heal_pct": 0.1},                          # 回复10%生命
+                "火": {"burn": 4},                                # 4层灼烧
+                "普通": {"power_bonus": 20},                      # +20威力
+                "幻": {"meteor": 1},                              # 1层星陨
+                "恶": {"life_drain": 0.3},                        # +30%吸血
+                "冰": {"freeze": 2},                              # 2层冻结
+                "翼": {"hit_count": 1},                           # 连击+1
+                "武": {"atk": 0.4},                               # +40%物攻
+                "虫": {"enemy_debuff": {"def": 0.4}},             # 对手-40%物防
+                "龙": {"enemy_debuff": {"spdef": 0.4}},           # 对手-40%魔防
+                "幽": {"enemy_energy": 2},                        # 对手-2能量
+                "机械": {"all_def": 0.4},                         # +40%双防
+                "萌": {"enemy_debuff": {"all_atk": 0.3}},         # 对手-30%双攻
+                "毒": {"poison": 2},                              # 2层中毒
+                "地": {"enemy_debuff": {"speed": 0.4}, "hit_count": -2},  # 对手速度-40%, 连击-2
+            }),
+        ]),
+    ],
 }
 
 
@@ -1508,7 +1535,7 @@ ABILITY_EFFECTS = {
     ],
 
     # "国王"的威严 (1只): 能耗为1技能威力+50% — same as 挺起胸脯
-    "\u201c国王\u201d的威严": [
+    "\"国王\"的威严": [
         AE(Timing.ON_BATTLE_START, [
             T(E.ABILITY_COMPUTE, action="modify_matching_skills", power_pct=0.5, energy_cost_eq=1)
         ]),
