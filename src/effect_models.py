@@ -113,6 +113,7 @@ class E(Enum):
     ENEMY_ENERGY_COST_UP = auto()    # 敌方攻击技能能耗+N  params: {"amount":6,"filter":"attack"}
     COUNTER_OVERRIDE = auto()        # 应对时替换效果 params: {"replace":"poison","from":2,"to":6}
     WEATHER = auto()                # 设置天气  params: {"type":"sunny"|"rain"|"sandstorm"|"hail","turns":5}
+    REFRACT_BY_CARRY = auto()       # 折射: 根据携带技能属性动态应用效果  params: {"map": {"毒": {"poison":2}, ...}}
 
     # ── 特性专用原语 ──
     ABILITY_COMPUTE = auto()         # 运行时计算并存入 ability_state

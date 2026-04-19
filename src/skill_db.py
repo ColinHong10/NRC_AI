@@ -109,6 +109,7 @@ def load_skills(csv_path: str = None) -> dict:
             name=name, skill_type=element, category=category,
             power=power, energy_cost=energy,
             hit_count=hit_count, agility=agility, priority_mod=priority_mod,
+            description=description,
         )
         skill._base_energy_cost = energy
         skill.effects = all_effects.get(name, [])

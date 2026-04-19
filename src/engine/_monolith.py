@@ -1022,6 +1022,11 @@ def _h_cleanse(tag: EffectTag, ctx: Ctx) -> None:
         _clear_buffs(target)
     if mode in ("debuffs", "all"):
         _clear_debuffs(target)
+        # 主动净化还需清除持久状态层数（中毒/灼烧/冻伤/寄生）
+        target.poison_stacks = 0
+        target.burn_stacks = 0
+        target.freeze_stacks = 0
+        target.leech_stacks = 0
 
 
 def _h_dispel_buffs(tag: EffectTag, ctx: Ctx) -> None:
@@ -1089,6 +1094,73 @@ def _h_agility_cost_share(tag: EffectTag, ctx: Ctx) -> None:
 def _h_energy_cost_accumulate(tag: EffectTag, ctx: Ctx) -> None:
     delta = tag.params.get("delta", 1)
     ctx.skill.energy_cost = max(0, ctx.skill.energy_cost + _adjust_cost_delta(ctx.user, delta))
+
+
+def _h_refract_by_carry(tag: EffectTag, ctx: Ctx) -> None:
+    """折射: 检查使用者携带的其他技能属性，动态应用对应效果。
+    params: {"map": {"毒": {"poison":2}, "火": {"burn":4}, ...}}
+    config 用中文短名（毒/火/光等），runtime 通过 Type enum value 反查。
+    """
+    # 反向映射: Type.value (英文) → 中文短名
+    _VALUE_TO_CN = {
+        "normal": "普通", "fire": "火", "water": "水", "grass": "草",
+        "electric": "电", "ice": "冰", "fighting": "武", "poison": "毒",
+        "ground": "地", "flying": "翼", "psychic": "幻", "bug": "虫",
+        "ghost": "幽", "dragon": "龙", "dark": "恶", "steel": "机械",
+        "fairy": "萌", "light": "光",
+    }
+    effects_map = tag.params.get("map", {})
+    # 收集使用者携带的其他技能的中文属性名
+    carried_cn_types: set = set()
+    for s in ctx.user.skills:
+        if s.name != ctx.skill.name:
+            cn = _VALUE_TO_CN.get(s.skill_type.value)
+            if cn:
+                carried_cn_types.add(cn)
+
+    for element in carried_cn_types:
+        effect = effects_map.get(element)
+        if not effect:
+            continue
+        # ── 印记类 ──
+        if "poison" in effect:
+            ctx.target.poison_stacks += effect["poison"]
+        if "burn" in effect:
+            ctx.target.burn_stacks += effect["burn"]
+        if "freeze" in effect:
+            ctx.target.freeze_stacks += effect["freeze"]
+        if "meteor" in effect:
+            ctx.target.meteor_stacks += effect["meteor"]
+            if ctx.target.meteor_countdown <= 0:
+                ctx.target.meteor_countdown = 3
+        # ── 自身增益 ──
+        if "spatk" in effect:
+            _apply_buff(ctx.user, {"spatk": effect["spatk"]})
+        if "atk" in effect:
+            _apply_buff(ctx.user, {"atk": effect["atk"]})
+        if "speed" in effect:
+            _apply_buff(ctx.user, {"speed": effect["speed"]})
+        if "all_def" in effect:
+            _apply_buff(ctx.user, {"all_def": effect["all_def"]})
+        # ── 技能修正 ──
+        if "cost_reduce" in effect:
+            ctx.skill.energy_cost = max(0, ctx.skill.energy_cost - effect["cost_reduce"])
+        if "power_bonus" in effect:
+            ctx.result["_power_bonus"] = ctx.result.get("_power_bonus", 0) + effect["power_bonus"]
+        # ── 回复/吸血 ──
+        if "heal_pct" in effect:
+            heal = int(ctx.user.max_hp * effect["heal_pct"])
+            ctx.user.current_hp = min(ctx.user.max_hp, ctx.user.current_hp + heal)
+        if "life_drain" in effect:
+            ctx.user.life_drain_mod += effect["life_drain"]
+        # ── 连击修正 ──
+        if "hit_count" in effect:
+            ctx.user.hit_count_mod += effect["hit_count"]
+        # ── 敌方减益 ──
+        if "enemy_energy" in effect:
+            ctx.target.energy = max(0, ctx.target.energy - effect["enemy_energy"])
+        if "enemy_debuff" in effect:
+            _apply_debuff(ctx.target, effect["enemy_debuff"])
 
 
 def _h_weather(tag: EffectTag, ctx: Ctx) -> None:
@@ -2951,6 +3023,7 @@ _HANDLERS: Dict[E, Callable] = {
     E.COUNTER_STATUS:           _h_counter_status,
     E.COUNTER_DEFENSE:          _h_counter_defense,
     E.WEATHER:                  _h_weather,
+    E.REFRACT_BY_CARRY:         _h_refract_by_carry,
     # ── 特性专用原语 ──
     E.ABILITY_COMPUTE:              _h_ability_compute,
     E.ABILITY_INCREMENT_COUNTER:    _h_ability_increment_counter,

@@ -355,7 +355,25 @@ body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 @keyframes hit-flash { 0%,100% { filter: drop-shadow(0 6px 20px rgba(0,0,0,.5)); } 35% { filter: drop-shadow(0 0 22px rgba(231,76,60,1)) brightness(2.5); } 65% { filter: drop-shadow(0 6px 20px rgba(0,0,0,.5)) brightness(1.5); } }
 @keyframes shield-pulse { 0%,100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.1); } }
 @keyframes shield-b-pulse { 0%,100% { transform: translateX(50%) scale(1); } 50% { transform: translateX(50%) scale(1.1); } }
-@keyframes faint-drop { to { opacity: 0; transform: translateY(24px) scale(.75); } }
+@keyframes faint-drop {
+  0% { opacity: 1; transform: translateY(0) scale(1); filter: grayscale(0); }
+  100% { opacity: 0; transform: translateY(24px) scale(.75); filter: grayscale(1); }
+}
+@keyframes faint-shake {
+  0%,100% { transform: translateX(0); }
+  15% { transform: translateX(-8px) rotate(-2deg); }
+  30% { transform: translateX(7px) rotate(1.5deg); }
+  45% { transform: translateX(-5px) rotate(-1deg); }
+  60% { transform: translateX(4px) rotate(.5deg); }
+  80% { transform: translateX(-2px); }
+}
+@keyframes screen-shake {
+  0%,100% { transform: translate(0,0); }
+  20% { transform: translate(-3px, 2px); }
+  40% { transform: translate(3px, -2px); }
+  60% { transform: translate(-2px, 1px); }
+  80% { transform: translate(1px, -1px); }
+}
 @keyframes float-up { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-36px); } }
 @keyframes slide-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes entry-bounce { 0% { transform: translateY(20px) scale(.85); opacity: 0; } 60% { transform: translateY(-5px) scale(1.04); } 100% { transform: translateY(0) scale(1); opacity: 1; } }
@@ -366,7 +384,9 @@ body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 .slot-atk-a { animation: atk-a .44s ease; }
 .slot-atk-b { animation: atk-b .44s ease; }
 .sprite-hit { animation: hit-flash .5s ease; }
+.sprite-faint-shake { animation: faint-shake .4s ease; }
 .sprite-faint { animation: faint-drop .6s ease forwards; }
+.arena-shake { animation: screen-shake .2s ease; }
 .shield-pulse-a { animation: shield-pulse .5s ease; }
 .shield-pulse-b { animation: shield-b-pulse .5s ease; }
 .sprite-switch-out-a { animation: switch-out-a .35s ease forwards; }
@@ -384,6 +404,156 @@ body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
   text-shadow: 0 0 4px #fff, 0 0 4px #fff, 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff;
 }
 .sprite-entry { animation: entry-bounce .55s cubic-bezier(.34,1.56,.64,1) forwards; }
+
+/* ═══ Tooltip ═══ */
+.skill-btn { position: relative; }
+.skill-tooltip {
+  display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  background: var(--title-bg); color: var(--text-light); border-radius: var(--r-sm);
+  padding: 10px 14px; font-size: 11px; line-height: 1.6; width: 260px; z-index: 50;
+  box-shadow: var(--shadow-lg); pointer-events: none;
+}
+.skill-tooltip::after {
+  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: var(--title-bg);
+}
+.skill-btn:hover .skill-tooltip { display: block; pointer-events: auto; }
+.tooltip-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.tooltip-desc { color: rgba(255,255,255,0.8); margin-bottom: 6px; font-size: 10px; }
+.tooltip-tags { display: flex; flex-wrap: wrap; gap: 3px; }
+.tooltip-tag { background: rgba(255,255,255,0.15); padding: 1px 6px; border-radius: 4px; font-size: 9px; }
+.tooltip-eff { font-weight: 700; margin-top: 4px; font-size: 11px; }
+.tooltip-eff.super { color: #5CB85C; }
+.tooltip-eff.resist { color: #F0AD4E; }
+.tooltip-eff.neutral { color: rgba(255,255,255,0.5); }
+
+/* ═══ 克制倍率标记 ═══ */
+.eff-badge { font-size: 9px; font-weight: 800; padding: 0 4px; border-radius: 3px; margin-left: 4px; }
+.eff-super { background: rgba(92,184,92,.2); color: var(--hp-green); border: 1px solid rgba(92,184,92,.4); }
+.eff-resist { background: rgba(240,173,78,.15); color: var(--hp-yellow); border: 1px solid rgba(240,173,78,.3); }
+
+/* ═══ 快捷键角标 ═══ */
+.key-hint {
+  position: absolute; top: 4px; right: 6px; font-size: 9px; font-weight: 700;
+  color: var(--text-muted); background: rgba(0,0,0,.06); padding: 0 4px; border-radius: 3px;
+  pointer-events: none; line-height: 1.6;
+}
+
+/* ═══ 特性日志高亮 ═══ */
+.log-ability { color: var(--status-purple); font-weight: 600; }
+.log-ability::before { content: '💎 '; }
+
+/* ═══ 伤害数字颜色 ═══ */
+.float-dmg.dmg-physical { color: var(--dmg-phys); }
+.float-dmg.dmg-magical { color: var(--dmg-magic); }
+.float-dmg.dmg-status { color: #999; font-size: 16px; }
+
+/* ═══ 印记面板 ═══ */
+.mark-row { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.mark-item { font-size: 8px; padding: 1px 5px; border-radius: 4px; font-weight: 600; display: flex; align-items: center; gap: 2px; }
+.mark-poison { background: rgba(160,64,160,.15); color: #A040A0; border: 1px solid rgba(160,64,160,.3); }
+.mark-burn { background: rgba(240,128,48,.15); color: #F08030; border: 1px solid rgba(240,128,48,.3); }
+.mark-freeze { background: rgba(152,216,216,.15); color: #5a9e9e; border: 1px solid rgba(152,216,216,.3); }
+.mark-leech { background: rgba(120,200,80,.15); color: #5a8c32; border: 1px solid rgba(120,200,80,.3); }
+.mark-meteor { background: rgba(112,56,152,.15); color: #7038F8; border: 1px solid rgba(112,56,152,.3); }
+.mark-cute { background: rgba(244,114,182,.12); color: #e91e9c; border: 1px solid rgba(244,114,182,.3); }
+
+/* ═══ 统计面板 ═══ */
+#stats-panel {
+  display: none; background: rgba(255,253,249,.97); border: 2px solid var(--border);
+  border-radius: var(--r-lg); padding: 16px; flex-direction: column; gap: 12px;
+  max-height: 300px; overflow-y: auto;
+}
+#stats-panel.show { display: flex; }
+.stats-title { font-family: 'RocoTitle', 'RocoBody', system-ui, sans-serif; font-size: 14px; font-weight: 700; color: var(--text-primary); text-align: center; }
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stats-team { display: flex; flex-direction: column; gap: 6px; }
+.stats-team-label { font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; }
+.stats-poke { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.stats-bar-wrap { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.stats-bar { height: 100%; border-radius: 4px; transition: width .4s; }
+.stats-bar.team-a { background: var(--buff-blue); }
+.stats-bar.team-b { background: var(--hp-red); }
+.stats-value { font-size: 10px; font-weight: 700; color: var(--text-secondary); min-width: 40px; text-align: right; }
+
+/* ═══ 回放控制 ═══ */
+#replay-bar {
+  display: none; background: var(--bg-card); border: 2px solid var(--border);
+  border-radius: var(--r-md); padding: 8px 14px; align-items: center; gap: 10px; justify-content: center;
+}
+#replay-bar.show { display: flex; }
+.replay-btn {
+  background: var(--bg-input); border: 2px solid var(--border); border-radius: var(--r-sm);
+  padding: 4px 12px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-primary);
+  transition: background .15s, border-color .15s;
+}
+.replay-btn:hover { background: var(--bg-card-hover); border-color: var(--primary); }
+.replay-btn.active { background: var(--primary); color: var(--text-light); border-color: var(--primary); }
+#replay-progress { font-size: 11px; color: var(--text-secondary); font-weight: 600; }
+
+/* ═══ AI 推理折叠 ═══ */
+.log-ai-reason {
+  color: var(--text-secondary); font-style: italic; font-size: 10px;
+  cursor: pointer; padding: 2px 0;
+}
+.log-ai-reason::before { content: '🤖 '; }
+.ai-detail { display: none; padding: 2px 0 2px 16px; color: var(--text-muted); font-size: 10px; }
+.ai-detail.show { display: block; }
+
+/* ═══ 天气特效层 ═══ */
+#weather-overlay {
+  position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: hidden;
+  transition: opacity .5s;
+}
+.weather-particle {
+  position: absolute; pointer-events: none; opacity: 0.7;
+}
+/* 雨天 */
+.weather-rain .weather-particle {
+  width: 2px; height: 12px; background: linear-gradient(180deg, transparent, rgba(104,144,240,.8));
+  animation: rain-fall linear infinite;
+}
+@keyframes rain-fall {
+  0% { transform: translateY(-20px) rotate(15deg); opacity: 0.7; }
+  100% { transform: translateY(340px) rotate(15deg); opacity: 0; }
+}
+/* 晴天 */
+.weather-sun { background: radial-gradient(circle at 80% 10%, rgba(255,200,50,.15) 0%, transparent 60%); }
+/* 沙暴 */
+.weather-sand .weather-particle {
+  width: 4px; height: 4px; background: rgba(184,160,56,.6); border-radius: 50%;
+  animation: sand-blow linear infinite;
+}
+@keyframes sand-blow {
+  0% { transform: translate(-20px, 0); opacity: 0.6; }
+  100% { transform: translate(calc(100vw + 20px), 30px); opacity: 0; }
+}
+/* 冰雹 */
+.weather-hail .weather-particle {
+  width: 6px; height: 6px; background: radial-gradient(circle, #fff, rgba(152,216,216,.8)); border-radius: 50%;
+  animation: hail-fall linear infinite;
+}
+@keyframes hail-fall {
+  0% { transform: translateY(-20px) translateX(10px); opacity: 0.8; }
+  100% { transform: translateY(340px) translateX(-20px); opacity: 0; }
+}
+
+/* ═══ 技能释放特效 ═══ */
+.skill-particle {
+  position: absolute; pointer-events: none; z-index: 15; border-radius: 50%;
+  animation: skill-burst .6s ease-out forwards;
+}
+@keyframes skill-burst {
+  0% { transform: scale(0); opacity: 1; }
+  60% { opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* ═══ 换人面板增强 ═══ */
+.sw-eff-row { display: flex; gap: 4px; margin-top: 2px; }
+.sw-eff-tag { font-size: 8px; padding: 0 4px; border-radius: 3px; font-weight: 600; }
+.sw-eff-myatk { background: rgba(92,184,92,.12); color: var(--hp-green); border: 1px solid rgba(92,184,92,.3); }
+.sw-eff-theiratk { background: rgba(217,83,79,.1); color: var(--hp-red); border: 1px solid rgba(217,83,79,.25); }
 </style>
 </head>
 <body>
@@ -401,6 +571,7 @@ body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 
     <!-- 战场画布 -->
     <div id="arena">
+      <div id="weather-overlay"></div>
       <div class="field-line"></div>
       <div class="platform" id="plat-a"></div>
       <div class="platform" id="plat-b"></div>
@@ -503,7 +674,17 @@ body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
       <!-- 结束横幅 -->
       <div id="gameover-banner">
         <div id="gameover-title"></div>
-        <button class="again-btn" onclick="startBattle()">再来一局</button>
+        <div id="stats-panel"></div>
+        <div id="replay-bar">
+          <button class="replay-btn" onclick="replayPrev()">◀ 上一回合</button>
+          <span id="replay-progress">—</span>
+          <button class="replay-btn" onclick="replayNext()">下一回合 ▶</button>
+          <button class="replay-btn" onclick="replayClose()">✕ 关闭回放</button>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:center">
+          <button class="again-btn" onclick="startBattle()">再来一局</button>
+          <button class="again-btn" style="background:var(--title-bg)" onclick="startReplay()">📼 回放</button>
+        </div>
       </div>
     </div>
 
@@ -574,6 +755,7 @@ let state = null;
 let myTurn = false;
 let showSwitch = false;
 let logCount = 0;
+let firstRender = true;
 
 // ══════════════════════════════
 // WebSocket
@@ -600,10 +782,25 @@ function onMsg(msg){
   switch(msg.type){
     case 'state':
       state = msg;
-      renderState(msg);
-      if(msg.logs) appendLogs(msg.logs);
-      if(msg.events && msg.events.length) playEvents(msg.events);
-      if(msg.game_over) showGameOver(msg.winner);
+      if(msg.events && msg.events.length){
+        // 有动画事件：先渲染非HP部分（精灵图片/按钮/回合），HP 随动画逐步更新
+        renderStateDeferred(msg);
+        if(msg.logs) appendLogs(msg.logs);
+        const totalDur = playEventsWithHp(msg.events, msg);
+        trackDamage(msg.events);
+        // 动画结束后渲染最终完整状态（HP/buff/能量统一刷到终值）
+        setTimeout(()=> renderState(msg), totalDur + 50);
+      } else {
+        // 无动画事件：直接渲染完整状态
+        renderState(msg);
+        if(msg.logs) appendLogs(msg.logs);
+      }
+      recordSnapshot(msg);
+      if(msg.weather) updateWeather(msg.weather);
+      if(msg.game_over){
+        const evtDur = msg.events ? msg.events.reduce((s,e)=>s+evDuration(e),0) : 0;
+        setTimeout(()=>{ showGameOver(msg.winner); renderBattleStats(); }, evtDur + 80);
+      }
       if(msg.force_switch_prompt && !msg.game_over){
         console.log('[DEBUG] Force switch prompt received');
       }
@@ -628,13 +825,27 @@ function onMsg(msg){
 }
 
 // ══════════════════════════════
-// 渲染战斗状态
+// 渲染 — 延迟模式（有动画时）
+// 只更新精灵图片/回合信息，HP/能量/buff 保持旧值
+// ══════════════════════════════
+function renderStateDeferred(s){
+  const pa=s.team_a[s.current_a], pb=s.team_b[s.current_b];
+  updateSprite('a', pa, firstRender); updateSprite('b', pb, firstRender);
+  if(firstRender) firstRender = false;
+  document.getElementById('turn-info').textContent=`回合 ${s.turn}`;
+  renderStrip('strip-a',s.team_a,s.current_a);
+  renderStrip('strip-b',s.team_b,s.current_b);
+}
+
+// ══════════════════════════════
+// 渲染战斗状态（完整）
 // ══════════════════════════════
 function renderState(s){
   const pa=s.team_a[s.current_a], pb=s.team_b[s.current_b];
   updateHpBar('a',pa); updateHpBar('b',pb);
   renderMp('mp-a',s.mp_a,4); renderMp('mp-b',s.mp_b,4);
-  updateSprite('a',pa); updateSprite('b',pb);
+  updateSprite('a', pa, firstRender); updateSprite('b', pb, firstRender);
+  if(firstRender) firstRender = false;
   document.getElementById('turn-info').textContent=`回合 ${s.turn}`;
   renderStrip('strip-a',s.team_a,s.current_a);
   renderStrip('strip-b',s.team_b,s.current_b);
@@ -704,12 +915,12 @@ function renderBuffRow(side, p){
     if(down && down > 0) tag(`${label}-${down}%`, 'buff-down');
   });
 
-  if(p.poison_stacks > 0)    tag(`中毒×${p.poison_stacks}`, 'buff-status');
-  if(p.burn_stacks > 0)      tag(`灼烧×${p.burn_stacks}`, 'buff-status');
-  if(p.frostbite_damage > 0) tag(`冻伤`, 'buff-status');
-  if(p.leech_stacks > 0)     tag(`寄生×${p.leech_stacks}`, 'buff-status');
-  if(p.meteor_stacks > 0)    tag(`星陨×${p.meteor_stacks}(${p.meteor_countdown})`, 'buff-status');
-  if(p.cute_stacks > 0)      tag(`萌化×${p.cute_stacks}`, 'buff-cute');
+  if(p.poison_stacks > 0)    tag(`🧪 毒×${p.poison_stacks}`, 'buff-status mark-poison');
+  if(p.burn_stacks > 0)      tag(`🔥 灼×${p.burn_stacks}`, 'buff-status mark-burn');
+  if(p.frostbite_damage > 0) tag(`❄ 冻伤`, 'buff-status mark-freeze');
+  if(p.leech_stacks > 0)     tag(`🌿 寄×${p.leech_stacks}`, 'buff-status mark-leech');
+  if(p.meteor_stacks > 0)    tag(`💫 星陨×${p.meteor_stacks}(${p.meteor_countdown})`, 'buff-status mark-meteor');
+  if(p.cute_stacks > 0)      tag(`🎀 萌化×${p.cute_stacks}`, 'buff-cute mark-cute');
 
   if(p.ability_info && p.ability_info.length > 0){
     p.ability_info.forEach(info => tag(info, 'buff-ability'));
@@ -726,11 +937,12 @@ function renderMp(id,cur,max){
   }
 }
 
-function updateSprite(side,p){
+function updateSprite(side, p, animate){
   const container = document.getElementById(`sprite-${side}`);
   const lbl       = document.getElementById(`label-${side}`);
   container.innerHTML = '';
   const el = makeSpriteEl(p, side);
+  if(animate && !p.is_fainted) el.classList.add('sprite-entry');
   container.appendChild(el);
   el.style.opacity = p.is_fainted ? '0.12' : '1';
   container.title = p.ability || '';
@@ -781,9 +993,34 @@ function renderSkills(pa, pb){
                   + counterTags.map(t=>`<span class="tag-pill tag-counter">${t}</span>`).join('');
     const cdNote = s.on_cooldown?`<span style="color:var(--hp-yellow);font-size:9px">冷却${s.cooldown}回合</span>`:'';
 
+    // 克制倍率标记
+    let effHtml = '';
+    const eff = s.type_effectiveness || 1.0;
+    if(eff >= 2.0) effHtml = `<span class="eff-badge eff-super">×${eff}</span>`;
+    else if(eff > 0 && eff <= 0.5) effHtml = `<span class="eff-badge eff-resist">×${eff}</span>`;
+
+    // Tooltip
+    let tooltipHtml = '';
+    const desc = s.description || '';
+    const details = (s.effect_details || []).filter(d=>d);
+    const summary = s.effect_summary || '';
+    if(desc || details.length || summary){
+      let effText = '';
+      if(eff >= 2.0) effText = `<div class="tooltip-eff super">⚔ 克制 ×${eff}</div>`;
+      else if(eff > 0 && eff <= 0.5) effText = `<div class="tooltip-eff resist">🛡 抵抗 ×${eff}</div>`;
+      tooltipHtml = `<div class="skill-tooltip">
+        <div class="tooltip-title"><span class="type-badge ${tc}" style="font-size:8px;padding:0 5px">${TYPE_ZH[s.type]||s.type}</span>${s.name}</div>
+        ${desc?`<div class="tooltip-desc">${desc}</div>`:''}
+        ${details.length?`<div class="tooltip-tags">${details.map(d=>`<span class="tooltip-tag">${d}</span>`).join('')}</div>`:''}
+        ${summary?`<div class="tooltip-desc" style="margin-top:4px">${summary}</div>`:''}
+        ${effText}
+      </div>`;
+    }
+
     btn.innerHTML=`
+      <span class="key-hint">${i+1}</span>
       <div class="sname">
-        <span>${s.name}</span>
+        <span>${s.name}${effHtml}</span>
         <span class="scost">⚡${s.energy_cost}</span>
       </div>
       <div class="smeta">
@@ -791,7 +1028,7 @@ function renderSkills(pa, pb){
         <span>${CAT_ZH[s.category]||s.category}</span>
         ${s.power>0?`<span class="spower">威${s.power}</span>`:''}
         ${cdNote}${tagHtml}
-      </div>`;
+      </div>${tooltipHtml}`;
     btn.onclick=()=>doSkill(i);
     grid.appendChild(btn);
   });
@@ -929,10 +1166,16 @@ function toggleSwitch(){
 function startBattle(){
   document.getElementById('start-screen').style.display='none';
   document.getElementById('gameover-banner').classList.remove('show');
+  document.getElementById('stats-panel').classList.remove('show');
+  document.getElementById('replay-bar').classList.remove('show');
   document.getElementById('battle-ui').style.display='flex';
   setWait(true,'战斗初始化中…');
   logCount=0;
   clearLog();
+  resetBattleStats();
+  replaySnapshots = [];
+  replayIdx = 0;
+  updateWeather(null);
 
   const playerTeamRaw = sessionStorage.getItem('playerTeam');
   const aiTeam = sessionStorage.getItem('aiTeam') || 'wing';
@@ -955,21 +1198,90 @@ function playEvents(events){
     setTimeout(()=>{
       if(ev.type==='switch_out') playSwitchOut(ev.side);
       if(ev.type==='switch_in')  playSwitchIn(ev.side, ev.icon_url, ev.name);
-      if(ev.type==='hit')        playHit(ev.side, ev.dmg, ev.eff, ev.atk_anim);
+      if(ev.type==='hit')        playHit(ev.side, ev.dmg, ev.eff, ev.atk_anim, ev.dmg_type);
       if(ev.type==='shield')     playShield(ev.side);
       if(ev.type==='faint')      playFaint(ev.side);
       if(ev.type==='heal')       playHeal(ev.side, ev.amount);
     }, delay);
     delay += dur;
   });
+  return delay;
+}
+
+/**
+ * 带 HP 递减更新的事件播放。
+ * 在每个 hit/heal 事件的命中时刻，递减式更新 HP 条，
+ * 让先后手攻击造成的伤害在 HP 条上依次可见。
+ */
+function playEventsWithHp(events, msg){
+  // 从当前页面上读取"旧" HP（动画开始前的值）
+  const hpState = {
+    a: _readCurrentHp('a'),
+    b: _readCurrentHp('b'),
+  };
+  // 也记录 maxHp 用于百分比计算
+  const maxHp = {
+    a: msg.team_a[msg.current_a].hp || 1,
+    b: msg.team_b[msg.current_b].hp || 1,
+  };
+
+  let delay = 0;
+  events.forEach(ev=>{
+    const dur = evDuration(ev);
+    const capturedDelay = delay;
+
+    setTimeout(()=>{
+      if(ev.type==='switch_out') playSwitchOut(ev.side);
+      if(ev.type==='switch_in')  playSwitchIn(ev.side, ev.icon_url, ev.name);
+      if(ev.type==='shield')     playShield(ev.side);
+      if(ev.type==='faint')      playFaint(ev.side);
+
+      if(ev.type==='hit'){
+        playHit(ev.side, ev.dmg, ev.eff, ev.atk_anim, ev.dmg_type);
+        // 命中时刻递减 HP
+        const impactDelay = ev.atk_anim !== false ? 250 : 0;
+        setTimeout(()=>{
+          hpState[ev.side] = Math.max(0, hpState[ev.side] - (ev.dmg||0));
+          _setHpBar(ev.side, hpState[ev.side], maxHp[ev.side]);
+        }, impactDelay);
+      }
+
+      if(ev.type==='heal'){
+        playHeal(ev.side, ev.amount);
+        hpState[ev.side] = Math.min(maxHp[ev.side], hpState[ev.side] + (ev.amount||0));
+        _setHpBar(ev.side, hpState[ev.side], maxHp[ev.side]);
+      }
+    }, capturedDelay);
+    delay += dur;
+  });
+  return delay;
+}
+
+/** 从页面 HP 文本读取当前值 */
+function _readCurrentHp(side){
+  const txt = document.getElementById(`hp-text-${side}`);
+  if(!txt) return 0;
+  const m = txt.textContent.match(/^(\d+)/);
+  return m ? parseInt(m[1],10) : 0;
+}
+
+/** 仅更新 HP 条宽度和文本（不动其他 UI） */
+function _setHpBar(side, cur, max){
+  const fill = document.getElementById(`hp-fill-${side}`);
+  const txt  = document.getElementById(`hp-text-${side}`);
+  if(!fill||!txt) return;
+  const pct = max > 0 ? cur / max * 100 : 0;
+  fill.style.width = pct + '%';
+  fill.className = 'hp-fill' + (pct<=20?' hp-red':pct<=50?' hp-yellow':'');
+  txt.textContent = `${cur}/${max}`;
 }
 
 function evDuration(ev){
   if(ev.type==='switch_out') return 380;
   if(ev.type==='switch_in')  return 540;
-  if(ev.type==='hit')        return 520;
+  if(ev.type==='hit')        return ev.atk_anim !== false ? 780 : 540;
   if(ev.type==='shield')     return 300;
-  if(ev.type==='faint')      return 660;
+  if(ev.type==='faint')      return 1050;
   if(ev.type==='heal')       return 400;
   return 200;
 }
@@ -1003,35 +1315,57 @@ function playSwitchIn(side, iconUrl, name){
   container.appendChild(el);
 }
 
-function playHit(side, dmg, eff, atkAnim){
+function playHit(side, dmg, eff, atkAnim, dmgType){
   const atkSide = side==='a'?'b':'a';
   const atkSlot = document.getElementById(`slot-${atkSide}`);
   const spriteEl = document.getElementById(`sprite-${side}`).querySelector('img,.sprite-emoji');
+  const arena = document.getElementById('arena');
 
+  // 延迟常量: 攻击冲刺到达目标的时刻
+  const IMPACT_DELAY = atkAnim !== false ? 250 : 0;
+
+  // ── 阶段1: 攻击方冲刺 + 技能粒子 ──
   if(atkAnim !== false){
     atkSlot.classList.add(`slot-atk-${atkSide}`);
     setTimeout(()=>atkSlot.classList.remove('slot-atk-a','slot-atk-b'),450);
+    spawnSkillParticles(atkSide, dmgType);
   }
 
-  if(spriteEl){ spriteEl.classList.add('sprite-hit'); setTimeout(()=>spriteEl.classList.remove('sprite-hit'),510); }
+  // ── 阶段2: 命中时刻 (冲刺到达) → 受击闪光 + 伤害数字 + 震屏 ──
+  setTimeout(()=>{
+    // 受击闪光
+    if(spriteEl){
+      spriteEl.classList.add('sprite-hit');
+      setTimeout(()=>spriteEl.classList.remove('sprite-hit'),510);
+    }
 
-  if(dmg>0){
-    const arena=document.getElementById('arena');
-    const slot =document.getElementById(`slot-${side}`);
-    const fl   =document.createElement('div');
-    fl.className='float-dmg';
-    let label = `-${dmg}`;
-    if(eff==='super') label += ' 克制！';
-    else if(eff==='resist') label += ' 抵抗';
-    fl.textContent = label;
-    fl.style.color = eff==='super' ? '#c0392b' : eff==='resist' ? '#999' : '#c0392b';
-    if(eff==='super') fl.style.fontSize = '24px';
-    const sr=slot.getBoundingClientRect(), ar=arena.getBoundingClientRect();
-    fl.style.left=(sr.left-ar.left+sr.width/2-18)+'px';
-    fl.style.top =(sr.top -ar.top+5)+'px';
-    arena.appendChild(fl);
-    setTimeout(()=>fl.remove(),950);
-  }
+    // 屏幕震动 (仅攻击技能有冲刺动画时)
+    if(atkAnim !== false && dmg > 0){
+      arena.classList.add('arena-shake');
+      setTimeout(()=>arena.classList.remove('arena-shake'),220);
+    }
+
+    // 伤害数字弹出
+    if(dmg>0){
+      const slot =document.getElementById(`slot-${side}`);
+      const fl   =document.createElement('div');
+      let dmgCls = 'float-dmg';
+      if(dmgType === 'magical') dmgCls += ' dmg-magical';
+      else if(dmgType === 'status') dmgCls += ' dmg-status';
+      else dmgCls += ' dmg-physical';
+      fl.className = dmgCls;
+      let label = `-${dmg}`;
+      if(eff==='super') label += ' 克制！';
+      else if(eff==='resist') label += ' 抵抗';
+      fl.textContent = label;
+      if(eff==='super') fl.style.fontSize = '24px';
+      const sr=slot.getBoundingClientRect(), ar=arena.getBoundingClientRect();
+      fl.style.left=(sr.left-ar.left+sr.width/2-18)+'px';
+      fl.style.top =(sr.top -ar.top+5)+'px';
+      arena.appendChild(fl);
+      setTimeout(()=>fl.remove(),950);
+    }
+  }, IMPACT_DELAY);
 }
 
 function playShield(side){
@@ -1046,7 +1380,15 @@ function playShield(side){
 
 function playFaint(side){
   const spriteEl = document.getElementById(`sprite-${side}`).querySelector('img,.sprite-emoji');
-  if(spriteEl){ spriteEl.classList.add('sprite-faint'); setTimeout(()=>spriteEl.classList.remove('sprite-faint'),620); }
+  if(!spriteEl) return;
+  // 阶段1: 挣扎晃动 (400ms)
+  spriteEl.classList.add('sprite-faint-shake');
+  setTimeout(()=>{
+    spriteEl.classList.remove('sprite-faint-shake');
+    // 阶段2: 倒地下坠 + 灰度 (600ms)
+    spriteEl.classList.add('sprite-faint');
+    setTimeout(()=>spriteEl.classList.remove('sprite-faint'), 650);
+  }, 400);
 }
 
 function playHeal(side, amount){
@@ -1109,6 +1451,8 @@ function addLogLine(text){
     el.className='log-line log-win'; el.textContent=text;
   } else if(text.includes('AI赢了')){
     el.className='log-line log-lose'; el.textContent=text;
+  } else if(text.includes('特性') || text.match(/【.+】触发/) || text.includes('触发了')){
+    el.className='log-line log-ability'; el.textContent=text;
   } else if(text.includes('受到')&&text.includes('伤害')){
     el.className='log-line log-dmg'; el.textContent=text;
   } else if(text.includes('回复')||text.includes('💚')){
@@ -1130,6 +1474,279 @@ function addLogLine(text){
 function clearLog(){
   document.getElementById('battle-log').innerHTML='';
   logCount=0;
+}
+
+// ══════════════════════════════
+// 键盘快捷键
+// ══════════════════════════════
+document.addEventListener('keydown', e => {
+  if(!myTurn || !state || state.game_over) return;
+  const key = e.key;
+  const panel = document.getElementById('switch-panel');
+  const isSwitch = panel && panel.classList.contains('open');
+
+  if(isSwitch){
+    // 换人面板：1-6 选择换人目标
+    const idx = parseInt(key);
+    if(idx >= 1 && idx <= 6){
+      const cards = panel.querySelectorAll('.sw-card:not(:disabled)');
+      if(idx-1 < cards.length) cards[idx-1].click();
+    }
+    if(key === 'Escape' || key === 'w' || key === 'W'){
+      toggleSwitch();
+      e.preventDefault();
+    }
+    return;
+  }
+
+  // 技能 1-4
+  if(key >= '1' && key <= '4'){
+    const btns = document.querySelectorAll('.skill-btn:not(:disabled)');
+    const idx = parseInt(key) - 1;
+    if(idx < btns.length) btns[idx].click();
+    e.preventDefault();
+  }
+  // Q = 聚能
+  if(key === 'q' || key === 'Q'){
+    const btn = document.getElementById('btn-charge');
+    if(btn && !btn.disabled) btn.click();
+    e.preventDefault();
+  }
+  // W = 换人
+  if(key === 'w' || key === 'W'){
+    const btn = document.getElementById('btn-switch-toggle');
+    if(btn && !btn.disabled) btn.click();
+    e.preventDefault();
+  }
+});
+
+// ══════════════════════════════
+// 战斗统计
+// ══════════════════════════════
+let battleStats = { a: {}, b: {} };
+
+function resetBattleStats(){
+  battleStats = { a: {}, b: {} };
+}
+
+function trackDamage(events){
+  if(!events) return;
+  events.forEach(ev => {
+    if(ev.type === 'hit' && ev.dmg > 0){
+      const atkSide = ev.side === 'a' ? 'b' : 'a';
+      if(!state) return;
+      const team = atkSide === 'a' ? state.team_a : state.team_b;
+      const curIdx = atkSide === 'a' ? state.current_a : state.current_b;
+      const name = team[curIdx]?.name || '???';
+      if(!battleStats[atkSide][name]) battleStats[atkSide][name] = 0;
+      battleStats[atkSide][name] += ev.dmg;
+    }
+  });
+}
+
+function renderBattleStats(){
+  const panel = document.getElementById('stats-panel');
+  panel.innerHTML = '';
+  panel.classList.add('show');
+
+  const title = document.createElement('div');
+  title.className = 'stats-title';
+  title.textContent = '📊 战斗伤害统计';
+  panel.appendChild(title);
+
+  const grid = document.createElement('div');
+  grid.className = 'stats-grid';
+
+  const maxDmg = Math.max(1,
+    ...Object.values(battleStats.a),
+    ...Object.values(battleStats.b)
+  );
+
+  ['a','b'].forEach(side => {
+    const col = document.createElement('div');
+    col.className = 'stats-team';
+    const label = document.createElement('div');
+    label.className = 'stats-team-label';
+    label.textContent = side === 'a' ? '我方' : 'AI方';
+    col.appendChild(label);
+
+    const entries = Object.entries(battleStats[side]).sort((a,b) => b[1]-a[1]);
+    if(entries.length === 0){
+      const empty = document.createElement('div');
+      empty.style.cssText = 'font-size:10px;color:var(--text-muted)';
+      empty.textContent = '无伤害记录';
+      col.appendChild(empty);
+    }
+    entries.forEach(([name, dmg]) => {
+      const row = document.createElement('div');
+      row.className = 'stats-poke';
+      row.innerHTML = `<span style="min-width:60px;font-weight:600">${name}</span>
+        <div class="stats-bar-wrap"><div class="stats-bar team-${side}" style="width:${dmg/maxDmg*100}%"></div></div>
+        <span class="stats-value">${dmg}</span>`;
+      col.appendChild(row);
+    });
+    grid.appendChild(col);
+  });
+
+  panel.appendChild(grid);
+}
+
+// ══════════════════════════════
+// 战斗回放
+// ══════════════════════════════
+let replaySnapshots = [];
+let replayIdx = 0;
+
+function recordSnapshot(msg){
+  if(msg.type === 'state'){
+    replaySnapshots.push(JSON.parse(JSON.stringify(msg)));
+  }
+}
+
+function startReplay(){
+  if(replaySnapshots.length === 0) return;
+  replayIdx = 0;
+  document.getElementById('replay-bar').classList.add('show');
+  document.getElementById('gameover-banner').classList.remove('show');
+  document.getElementById('battle-ui').style.display = 'flex';
+  setWait(false);
+  enableActions(false);
+  showReplayFrame();
+}
+
+function showReplayFrame(){
+  if(replayIdx < 0 || replayIdx >= replaySnapshots.length) return;
+  const snap = replaySnapshots[replayIdx];
+  renderState(snap);
+  document.getElementById('replay-progress').textContent =
+    `回合 ${snap.turn} (${replayIdx+1}/${replaySnapshots.length})`;
+  // 播放动画
+  if(snap.events && snap.events.length){
+    playEvents(snap.events);
+  }
+}
+
+function replayPrev(){
+  if(replayIdx > 0){ replayIdx--; showReplayFrame(); }
+}
+function replayNext(){
+  if(replayIdx < replaySnapshots.length - 1){ replayIdx++; showReplayFrame(); }
+}
+function replayClose(){
+  document.getElementById('replay-bar').classList.remove('show');
+  if(state && state.game_over){
+    showGameOver(state.winner);
+  }
+}
+
+// ══════════════════════════════
+// 技能释放粒子
+// ══════════════════════════════
+const TYPE_PARTICLE_COLORS = {
+  fire: ['#F08030','#FF6B35','#FFD166'],
+  water: ['#6890F0','#4FC3F7','#81D4FA'],
+  grass: ['#78C850','#AED581','#C5E1A5'],
+  electric: ['#F8D030','#FFF176','#FFE082'],
+  ice: ['#98D8D8','#B2EBF2','#E0F7FA'],
+  poison: ['#A040A0','#CE93D8','#E1BEE7'],
+  dragon: ['#7038F8','#9C27B0','#BA68C8'],
+  dark: ['#705848','#8D6E63','#A1887F'],
+  ghost: ['#705898','#9575CD','#B39DDB'],
+  fairy: ['#EE99AC','#F48FB1','#F8BBD0'],
+  fighting: ['#C03028','#EF5350','#E57373'],
+  flying: ['#A890F0','#B39DDB','#D1C4E9'],
+  psychic: ['#F85888','#F06292','#F48FB1'],
+  bug: ['#A8B820','#C0CA33','#D4E157'],
+  rock: ['#B8A038','#D4C568','#E6DB74'],
+  ground: ['#E0C068','#D4B06A','#C8A060'],
+  steel: ['#B8B8D0','#CFD8DC','#E0E0E0'],
+  light: ['#FFD966','#FFE082','#FFF8E1'],
+  normal: ['#A8A878','#C5C5A5','#D5D5C0'],
+};
+
+function spawnSkillParticles(side, dmgType){
+  const slot = document.getElementById(`slot-${side}`);
+  const arena = document.getElementById('arena');
+  if(!slot || !arena) return;
+  const sr = slot.getBoundingClientRect();
+  const ar = arena.getBoundingClientRect();
+  const cx = sr.left - ar.left + sr.width/2;
+  const cy = sr.top - ar.top + sr.height/2;
+
+  // 根据技能类型猜测属性（简化：用当前精灵的type）
+  let colors = TYPE_PARTICLE_COLORS[dmgType] || TYPE_PARTICLE_COLORS.normal;
+  if(state){
+    const team = side === 'a' ? state.team_a : state.team_b;
+    const idx = side === 'a' ? state.current_a : state.current_b;
+    const poke = team[idx];
+    if(poke && TYPE_PARTICLE_COLORS[poke.type]) colors = TYPE_PARTICLE_COLORS[poke.type];
+  }
+
+  for(let i = 0; i < 8; i++){
+    const p = document.createElement('div');
+    p.className = 'skill-particle';
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 20 + Math.random() * 40;
+    const x = cx + Math.cos(angle) * dist;
+    const y = cy + Math.sin(angle) * dist;
+    const size = 4 + Math.random() * 8;
+    p.style.cssText = `left:${x-size/2}px;top:${y-size/2}px;width:${size}px;height:${size}px;background:${colors[i%colors.length]};animation-duration:${0.4+Math.random()*0.4}s`;
+    arena.appendChild(p);
+    setTimeout(() => p.remove(), 800);
+  }
+}
+
+// ══════════════════════════════
+// 天气特效
+// ══════════════════════════════
+let currentWeather = null;
+let weatherParticleTimer = null;
+
+function updateWeather(weatherType){
+  const overlay = document.getElementById('weather-overlay');
+  if(!overlay) return;
+  if(weatherType === currentWeather) return;
+  currentWeather = weatherType;
+
+  overlay.innerHTML = '';
+  overlay.className = '';
+  if(weatherParticleTimer){ clearInterval(weatherParticleTimer); weatherParticleTimer = null; }
+
+  if(!weatherType || weatherType === 'none') return;
+
+  if(weatherType === 'rain'){
+    overlay.classList.add('weather-rain');
+    weatherParticleTimer = setInterval(() => {
+      const p = document.createElement('div');
+      p.className = 'weather-particle';
+      p.style.left = Math.random() * 100 + '%';
+      p.style.animationDuration = (0.5 + Math.random() * 0.5) + 's';
+      overlay.appendChild(p);
+      setTimeout(() => p.remove(), 1200);
+    }, 80);
+  } else if(weatherType === 'sun'){
+    overlay.classList.add('weather-sun');
+  } else if(weatherType === 'sand'){
+    overlay.classList.add('weather-sand');
+    weatherParticleTimer = setInterval(() => {
+      const p = document.createElement('div');
+      p.className = 'weather-particle';
+      p.style.top = Math.random() * 80 + '%';
+      p.style.animationDuration = (1.5 + Math.random() * 1) + 's';
+      overlay.appendChild(p);
+      setTimeout(() => p.remove(), 3000);
+    }, 150);
+  } else if(weatherType === 'hail'){
+    overlay.classList.add('weather-hail');
+    weatherParticleTimer = setInterval(() => {
+      const p = document.createElement('div');
+      p.className = 'weather-particle';
+      p.style.left = Math.random() * 100 + '%';
+      p.style.animationDuration = (0.8 + Math.random() * 0.4) + 's';
+      overlay.appendChild(p);
+      setTimeout(() => p.remove(), 1500);
+    }, 200);
+  }
 }
 
 // ══════════════════════════════

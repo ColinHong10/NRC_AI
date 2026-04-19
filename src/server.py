@@ -470,7 +470,7 @@ def _get_icon_url(name: str) -> str:
 
 # ═══════════════════════════════════════
 
-def serialize_pokemon(p, is_current=False):
+def serialize_pokemon(p, is_current=False, enemy_type=None):
     # ability_state 中有意义的 UI 字段
     ability_state = getattr(p, "ability_state", {}) or {}
     ability_info = []
@@ -523,13 +523,16 @@ def serialize_pokemon(p, is_current=False):
         # 特性状态
         "ability_info": ability_info,
         "icon_url":        _get_icon_url(p.name),
-        "skills":          [serialize_skill(s, p.energy, p.cooldowns.get(i, 0))
+        "skills":          [serialize_skill(s, p.energy, p.cooldowns.get(i, 0), enemy_type=enemy_type)
                             for i, s in enumerate(p.skills)] if is_current else [],
     }
 
 
-def serialize_skill(s, current_energy, cooldown=0):
+def serialize_skill(s, current_energy, cooldown=0, enemy_type=None):
     effect_view = _skill_effect_display(s)
+    eff = 1.0
+    if enemy_type:
+        eff = _get_type_effectiveness_for_display(s.skill_type.value, enemy_type)
     return {
         "name":        s.name,
         "type":        s.skill_type.value,
@@ -544,6 +547,8 @@ def serialize_skill(s, current_energy, cooldown=0):
         "effect_details": effect_view["details"],
         "effect_summary": effect_view["summary"],
         "has_effects": effect_view["has_effects"],
+        "description": getattr(s, "description", "") or "",
+        "type_effectiveness": eff,
     }
 
 
@@ -596,15 +601,18 @@ def serialize_state(state: BattleState, waiting: bool = False,
                     force_switch_prompt: bool = False,
                     force_switch_reason: str = "force_switch",
                     force_switch_alive: list = None):
+    enemy_b_type = state.team_b[state.current_b].pokemon_type.value
+    enemy_a_type = state.team_a[state.current_a].pokemon_type.value
+
     team_a_data = []
     for i, p in enumerate(state.team_a):
-        d = serialize_pokemon(p, is_current=(i == state.current_a))
+        d = serialize_pokemon(p, is_current=(i == state.current_a), enemy_type=enemy_b_type)
         d["is_current"] = (i == state.current_a)
         team_a_data.append(d)
 
     team_b_data = []
     for i, p in enumerate(state.team_b):
-        d = serialize_pokemon(p, is_current=(i == state.current_b))
+        d = serialize_pokemon(p, is_current=(i == state.current_b), enemy_type=enemy_a_type)
         d["is_current"] = (i == state.current_b)
         team_b_data.append(d)
 
@@ -1166,15 +1174,27 @@ def _build_events(snap_before, snap_after, state, action_a, action_b, pa_before,
     heal_a = calc_heal("a", ca_after)
     heal_b = calc_heal("b", cb_after)
 
-    def mk_hit(side, dmg, eff, atk_anim):
-        evt = {"type": "hit", "side": side, "dmg": dmg, "atk_anim": atk_anim}
+    def mk_hit(side, dmg, eff, atk_anim, dmg_type="physical"):
+        evt = {"type": "hit", "side": side, "dmg": dmg, "atk_anim": atk_anim, "dmg_type": dmg_type}
         if eff >= 2.0:          evt["eff"] = "super"
         elif 0 < eff <= 0.5:    evt["eff"] = "resist"
         return evt
 
     def mk_debuff_hit(side, dmg):
         """状态 debuff 造成的受击：只有受击方闪烁，无冲刺"""
-        return {"type": "hit", "side": side, "dmg": dmg, "atk_anim": False}
+        return {"type": "hit", "side": side, "dmg": dmg, "atk_anim": False, "dmg_type": "status"}
+
+    def _get_dmg_type(action, poke):
+        """从行动和精灵信息推断伤害类型"""
+        if action[0] >= 0 and poke and action[0] < len(poke.skills):
+            sk = poke.skills[action[0]]
+            if sk.category.value in ("魔攻", "魔法"):
+                return "magical"
+            return "physical"
+        return "physical"
+
+    dmg_type_a = _get_dmg_type(action_a, pa_before)  # A对B造成的伤害类型
+    dmg_type_b = _get_dmg_type(action_b, pb_before)  # B对A造成的伤害类型
 
     def mk_shield(side):
         return {"type": "shield", "side": side}
@@ -1223,6 +1243,9 @@ def _build_events(snap_before, snap_after, state, action_a, action_b, pa_before,
     first_got_debuff  = b_got_debuff if first_side == "a" else a_got_debuff
     second_got_debuff = a_got_debuff if first_side == "a" else b_got_debuff
 
+    first_dmg_type  = dmg_type_a if first_side == "a" else dmg_type_b
+    second_dmg_type = dmg_type_b if first_side == "a" else dmg_type_a
+
     sh_first  = get_shield(second_side)
     sh_second = get_shield(first_side)
 
@@ -1231,7 +1254,8 @@ def _build_events(snap_before, snap_after, state, action_a, action_b, pa_before,
         events.append(sh_first)
     if first_dmg > 0:
         eff = eff_b if first_side == "a" else eff_a
-        events.append(mk_hit(second_side, first_dmg, eff, not first_got_debuff))
+        dt = first_dmg_type if not first_got_debuff else "status"
+        events.append(mk_hit(second_side, first_dmg, eff, not first_got_debuff, dt))
     if first_heal > 0:
         events.append({"type": "heal", "side": first_side, "amount": first_heal})
 
@@ -1240,7 +1264,8 @@ def _build_events(snap_before, snap_after, state, action_a, action_b, pa_before,
         events.append(sh_second)
     if second_dmg > 0:
         eff = eff_a if first_side == "a" else eff_b
-        events.append(mk_hit(first_side, second_dmg, eff, not second_got_debuff))
+        dt = second_dmg_type if not second_got_debuff else "status"
+        events.append(mk_hit(first_side, second_dmg, eff, not second_got_debuff, dt))
     if second_heal > 0:
         events.append({"type": "heal", "side": second_side, "amount": second_heal})
 
