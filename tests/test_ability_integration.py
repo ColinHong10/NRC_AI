@@ -7,8 +7,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models import Pokemon, Skill, BattleState, Type, SkillCategory, StatusType
 from src.skill_db import get_skill, load_skills, load_ability_effects
+from src.team_builder import TeamBuilder
 from src.battle import (
-    TeamBuilder, execute_full_turn, turn_end_effects, auto_switch,
+    execute_full_turn, turn_end_effects, auto_switch,
     _check_fainted_and_deduct_mp, _execute_with_counter, _apply_share_gains,
     _check_frostbite_lethal,
 )

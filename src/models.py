@@ -278,6 +278,18 @@ class Pokemon:
     # 旧字段保留兼容
     freeze_stacks: int = 0
 
+    # ── 个体值和性格配置（用户可配置） ──
+    # 个体值：6 项属性中选择 3 项为 60，其余 3 项为 0
+    iv_hp: int = 0
+    iv_atk: int = 0
+    iv_spatk: int = 0
+    iv_def: int = 0
+    iv_spdef: int = 0
+    iv_speed: int = 0
+
+    # 性格名称（25 种性格之一，默认坦率无修正）
+    nature: str = "坦率"
+
 
     # ── 新引擎字段 ──
     ability_effects: List[Any] = field(default_factory=list)  # List[AbilityEffect]
@@ -285,7 +297,10 @@ class Pokemon:
 
     def __post_init__(self):
         if self.current_hp == 0:
-            self.current_hp = self.hp
+            self.current_hp = round(self.hp)
+        # 确保 HP 是整数
+        self.hp = round(self.hp)
+        self.current_hp = round(self.current_hp)
 
     @property
     def is_fainted(self) -> bool:
@@ -417,6 +432,14 @@ class Pokemon:
         p.charging_skill_idx = self.charging_skill_idx
         p.freeze_stacks = self.freeze_stacks
         p.cooldowns = dict(self.cooldowns)
+        # 个体值和性格（用户配置，复制时保留）
+        p.iv_hp = self.iv_hp
+        p.iv_atk = self.iv_atk
+        p.iv_spatk = self.iv_spatk
+        p.iv_def = self.iv_def
+        p.iv_spdef = self.iv_spdef
+        p.iv_speed = self.iv_speed
+        p.nature = self.nature
         # 新引擎字段
         p.ability_effects = [ae.copy() for ae in self.ability_effects] if self.ability_effects else []
         p.ability_state = dict(self.ability_state)

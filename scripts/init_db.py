@@ -2,14 +2,18 @@
 NRC_AI 数据库初始化脚本
 将 pokemon_stats.xlsx + skills_wiki.csv + skills_all.csv 导入 SQLite
 
-用法: python3 scripts/init_db.py
-输出: data/nrc.db
+用法:
+    python3 scripts/init_db.py
+    python3 scripts/init_db.py --skill-source bilibili
+
+输出：data/nrc.db
 """
 import os
 import sys
 import csv
 import sqlite3
 import openpyxl
+import argparse
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, "data", "nrc.db")
@@ -17,6 +21,7 @@ DB_PATH = os.path.join(BASE_DIR, "data", "nrc.db")
 POKEMON_XLSX = os.path.join(BASE_DIR, "data", "pokemon_stats.xlsx")
 SKILLS_WIKI_CSV = os.path.join(BASE_DIR, "data", "skills_wiki.csv")
 SKILLS_ALL_CSV = os.path.join(BASE_DIR, "data", "skills_all.csv")
+SKILLS_BILIBILI_CSV = os.path.join(BASE_DIR, "data", "skills_bilibili.csv")
 
 
 def create_tables(conn):
@@ -60,7 +65,7 @@ def create_tables(conn):
     )
     """)
 
-    # ── 精灵-技能关联表 ──
+    # ── 精灵 - 技能关联表 ──
     c.execute("""
     CREATE TABLE IF NOT EXISTS pokemon_skill (
         pokemon_id  INTEGER NOT NULL,
@@ -138,6 +143,94 @@ def import_pokemon(conn):
     wb.close()
     conn.commit()
     print(f"[OK] Imported {count} pokemon from xlsx")
+    return count
+
+
+def import_skills_from_bilibili(conn):
+    """从 skills_bilibili.csv 导入技能（不整合其他来源）"""
+    if not os.path.exists(SKILLS_BILIBILI_CSV):
+        print(f"[SKIP] {SKILLS_BILIBILI_CSV} not found")
+        return 0
+
+    c = conn.cursor()
+    count = 0
+    pet_links = []  # [(skill_name, pet_name), ...]
+
+    with open(SKILLS_BILIBILI_CSV, "r", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            name = row["技能名"].strip()
+            if not name:
+                continue
+
+            element = row.get("属性", "普通").strip()
+            category = row.get("分类", "状态").strip()
+            energy = 0
+            power = 0
+            try:
+                energy = int(row.get("耗能", "0").strip())
+            except ValueError:
+                pass
+            try:
+                power = int(row.get("威力", "0").strip())
+            except ValueError:
+                pass
+            desc = row.get("技能描述", "").strip()
+
+            c.execute("SELECT id FROM skill WHERE name = ?", (name,))
+            existing = c.fetchone()
+            if existing:
+                c.execute("""
+                    UPDATE skill SET element=?, category=?, energy_cost=?, power=?, description=?, source='bilibili'
+                    WHERE name=?
+                """, (element, category, energy, power, desc, name))
+            else:
+                c.execute("""
+                    INSERT INTO skill (name, element, category, energy_cost, power, description, source)
+                    VALUES (?,?,?,?,?,?,'bilibili')
+                """, (name, element, category, energy, power, desc))
+                count += 1
+
+            # Parse pet list
+            pets_str = row.get("可学习精灵", "").strip()
+            if pets_str:
+                for pet_name in pets_str.split("|"):
+                    pet_name = pet_name.strip()
+                    if pet_name and len(pet_name) < 30:
+                        pet_links.append((name, pet_name))
+
+    conn.commit()
+    print(f"[OK] Imported {count} skills from bilibili csv")
+
+    # Build pokemon_skill relations
+    link_count = 0
+    for skill_name, pet_name in pet_links:
+        c.execute("SELECT id FROM skill WHERE name = ?", (skill_name,))
+        skill_row = c.fetchone()
+        if not skill_row:
+            continue
+        skill_id = skill_row[0]
+
+        c.execute("SELECT id FROM pokemon WHERE name = ?", (pet_name,))
+        pet_row = c.fetchone()
+        if not pet_row:
+            # Try fuzzy match: base name without parentheses
+            base = pet_name.split("（")[0]
+            c.execute("SELECT id FROM pokemon WHERE name LIKE ?", (f"{base}%",))
+            pet_row = c.fetchone()
+        if not pet_row:
+            continue
+        pet_id = pet_row[0]
+
+        try:
+            c.execute("INSERT OR IGNORE INTO pokemon_skill (pokemon_id, skill_id) VALUES (?,?)",
+                       (pet_id, skill_id))
+            link_count += 1
+        except sqlite3.IntegrityError:
+            pass
+
+    conn.commit()
+    print(f"[OK] Created {link_count} pokemon-skill links")
     return count
 
 
@@ -265,38 +358,6 @@ def import_skills(conn):
     return count + extra
 
 
-def recalc_combat_stats(conn):
-    """用正确的PvP公式重算所有精灵的战斗五维并写回DB"""
-    import sys
-    sys.path.insert(0, os.path.join(BASE_DIR, "src"))
-    from pokemon_db import calc_combat_stats
-
-    c = conn.cursor()
-    c.execute("SELECT id, base_hp, base_atk, base_spatk, base_def, base_spdef, base_speed FROM pokemon")
-    rows = c.fetchall()
-    count = 0
-    for r in rows:
-        pid = r[0]
-        stats = calc_combat_stats(
-            base_hp=r[1], base_atk=r[2], base_spatk=r[3],
-            base_def=r[4], base_spdef=r[5], base_speed=r[6],
-        )
-        c.execute("""
-            UPDATE pokemon SET
-                stat_hp=?, stat_atk=?, stat_spatk=?,
-                stat_def=?, stat_spdef=?, stat_speed=?
-            WHERE id=?
-        """, (
-            round(stats["hp"], 1), round(stats["atk"], 1),
-            round(stats["spatk"], 1), round(stats["def"], 1),
-            round(stats["spdef"], 1), round(stats["speed"], 1),
-            pid,
-        ))
-        count += 1
-    conn.commit()
-    print(f"[OK] Recalculated combat stats for {count} pokemon (new PvP formula)")
-
-
 def print_stats(conn):
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM pokemon")
@@ -343,10 +404,25 @@ def print_stats(conn):
 
 
 def main():
-    # Delete old DB
+    parser = argparse.ArgumentParser(description="NRC_AI 数据库初始化脚本")
+    parser.add_argument(
+        "--skill-source",
+        choices=["wiki", "bilibili"],
+        default="wiki",
+        help="技能数据源：wiki (skills_wiki.csv + skills_all.csv) 或 bilibili (skills_bilibili.csv)"
+    )
+    args = parser.parse_args()
+
+    # Backup old DB if exists (keep only one backup)
     if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
-        print(f"[OK] Removed old {DB_PATH}")
+        backup_path = DB_PATH + ".bak"
+        # Remove old backup if exists
+        if os.path.exists(backup_path):
+            os.remove(backup_path)
+            print(f"[OK] Removed old backup {backup_path}")
+        # Rename current DB to backup
+        os.rename(DB_PATH, backup_path)
+        print(f"[OK] Backed up {DB_PATH} → {backup_path}")
 
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -354,8 +430,13 @@ def main():
 
     create_tables(conn)
     import_pokemon(conn)
-    import_skills(conn)
-    recalc_combat_stats(conn)
+
+    # 根据参数选择技能数据源
+    if args.skill_source == "bilibili":
+        import_skills_from_bilibili(conn)
+    else:
+        import_skills(conn)
+
     print_stats(conn)
 
     conn.close()

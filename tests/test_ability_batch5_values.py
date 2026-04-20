@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.models import Pokemon, BattleState, Type, StatusType
 from src.skill_db import get_skill, load_skills, load_ability_effects
-from src.battle import TeamBuilder
+from src.team_builder import TeamBuilder
 from src.effect_engine import EffectExecutor
 from src.effect_models import E, Timing
 db = load_skills()

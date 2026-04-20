@@ -8,8 +8,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models import Pokemon, Skill, BattleState, Type, SkillCategory, StatusType
 from src.skill_db import get_skill, load_skills, load_ability_effects
+from src.team_builder import TeamBuilder
 from src.battle import (
-    TeamBuilder, execute_full_turn, turn_end_effects, check_winner,
+    execute_full_turn, turn_end_effects, check_winner,
     _check_frostbite_lethal,
 )
 from src.effect_engine import EffectExecutor

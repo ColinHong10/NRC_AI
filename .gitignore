@@ -19,6 +19,7 @@ venv/
 # Database runtime files
 data/nrc.db-shm
 data/nrc.db-wal
+data/nrc.db.bak
 data/crawl_progress.json
 data/nrc_battle.db
 
@@ -44,3 +45,10 @@ scripts/scrape_log.txt
 
 # Excel 副本
 data/*.xlsx
+
+# biligami 爬虫输出（数据文件，不纳入版本控制）
+data/skills_bilibili.csv
+data/scrape_bilibili_progress.json
+
+# Claude Code 配置文件（本地使用，不纳入版本控制）
+CLAUDE.md

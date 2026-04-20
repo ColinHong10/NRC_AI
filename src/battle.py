@@ -1,5 +1,8 @@
 """
-洛克王国战斗模拟系统 - 战斗引擎 + 队伍构建
+洛克王国战斗模拟系统 - 战斗引擎
+
+负责战斗回合执行、效果结算、印记/天气系统、换人逻辑等核心战斗流程。
+队伍构建已移至 src/team_builder.py。
 """
 
 import sys
@@ -137,7 +140,7 @@ def _temporary_skill_cost_delta(user: Pokemon, skill: Skill) -> int:
 
 
 def _transform_to_guard_queen(pokemon: Pokemon) -> None:
-    from src.pokemon_db import get_pokemon
+    from src.pokemon_db import get_pokemon, calc_combat_stats
 
     if "棋绮后" in pokemon.name:
         return
@@ -145,13 +148,33 @@ def _transform_to_guard_queen(pokemon: Pokemon) -> None:
     data = get_pokemon(target_name)
     if not data:
         return
+
+    # 从种族值计算战斗五维，保留原个体的 IV 和性格
+    stats = calc_combat_stats(
+        base_hp=data["生命种族值"],
+        base_atk=data["物攻种族值"],
+        base_spatk=data["魔攻种族值"],
+        base_def=data["物防种族值"],
+        base_spdef=data["魔防种族值"],
+        base_speed=data["速度种族值"],
+        iv_config={
+            "hp": pokemon.iv_hp,
+            "atk": pokemon.iv_atk,
+            "spatk": pokemon.iv_spatk,
+            "def": pokemon.iv_def,
+            "spdef": pokemon.iv_spdef,
+            "speed": pokemon.iv_speed,
+        },
+        nature_name=pokemon.nature,
+    )
+
     pokemon.name = target_name
-    pokemon.hp = int(data["生命值"])
-    pokemon.attack = int(data["物攻"])
-    pokemon.sp_attack = int(data["魔攻"])
-    pokemon.defense = int(data["物防"])
-    pokemon.sp_defense = int(data["魔防"])
-    pokemon.speed = int(data["速度"])
+    pokemon.hp = stats["hp"]
+    pokemon.attack = stats["atk"]
+    pokemon.sp_attack = stats["spatk"]
+    pokemon.defense = stats["def"]
+    pokemon.sp_defense = stats["spdef"]
+    pokemon.speed = stats["speed"]
     pokemon.current_hp = pokemon.hp
     pokemon.energy = 10
     pokemon.status = StatusType.NORMAL
@@ -550,7 +573,7 @@ def turn_end_effects(state: BattleState) -> None:
             # 中毒: 3% × 层数 (不衰减)
             if p.poison_stacks > 0:
                 dmg = int(p.hp * 0.03 * p.poison_stacks)
-                p.current_hp -= max(1, dmg)
+                p.current_hp = round(p.current_hp - max(1, dmg), 2)
                 _check_frostbite_lethal(p)
                 if p.is_fainted:
                     break
@@ -559,7 +582,7 @@ def turn_end_effects(state: BattleState) -> None:
             enemy_p = enemy_team_list[enemy_idx]
             if p.poison_stacks > 0 and enemy_p.ability_state.get("extra_poison_tick"):
                 dmg2 = int(p.hp * 0.03 * p.poison_stacks)
-                p.current_hp -= max(1, dmg2)
+                p.current_hp = round(p.current_hp - max(1, dmg2), 2)
                 _check_frostbite_lethal(p)
                 if p.is_fainted:
                     break
@@ -568,7 +591,7 @@ def turn_end_effects(state: BattleState) -> None:
             # 燃薪虫煤渣草: 灼烧不衰减反而增长
             if p.burn_stacks > 0:
                 dmg = int(p.hp * 0.02 * p.burn_stacks)
-                p.current_hp -= max(1, dmg)
+                p.current_hp = round(p.current_hp - max(1, dmg), 2)
                 _check_frostbite_lethal(p)
                 if p.is_fainted:
                     break
@@ -594,7 +617,7 @@ def turn_end_effects(state: BattleState) -> None:
             # 寄生: 每层8%最大HP, 吸取给对手
             if p.leech_stacks > 0:
                 leech_dmg = int(p.hp * 0.08 * p.leech_stacks)
-                p.current_hp -= max(1, leech_dmg)
+                p.current_hp = round(p.current_hp - max(1, leech_dmg), 2)
                 _check_frostbite_lethal(p)
                 if p.is_fainted:
                     break
@@ -625,7 +648,7 @@ def turn_end_effects(state: BattleState) -> None:
                         meteor_dmg = max(1, int((e_spatk / p_spdef) * meteor_power * 0.9))
                     else:
                         meteor_dmg = max(1, meteor_power)
-                    p.current_hp -= meteor_dmg
+                    p.current_hp = round(p.current_hp - meteor_dmg, 2)
 
             # 生长特性：每回合回12%HP
             heal_per_turn = p.ability_state.get("heal_per_turn_pct", 0)
@@ -760,7 +783,7 @@ def _apply_mark_turn_end(state: BattleState) -> None:
         poison_mark = my_marks.get("poison_mark", 0)
         if poison_mark > 0:
             dmg = max(1, int(p.hp * 0.03 * poison_mark))
-            p.current_hp -= dmg
+            p.current_hp = round(p.current_hp - dmg, 2)
             if p.current_hp <= 0:
                 p.current_hp = 0
                 p.status = StatusType.FAINTED
@@ -799,7 +822,7 @@ def _apply_mark_on_enter(state: BattleState, team: str, pokemon: 'Pokemon') -> N
     thorn_mark = my_marks.get("thorn_mark", 0)
     if thorn_mark > 0:
         dmg = max(1, int(pokemon.hp * 0.06 * thorn_mark))
-        pokemon.current_hp -= dmg
+        pokemon.current_hp = round(pokemon.current_hp - dmg, 2)
         if pokemon.current_hp <= 0:
             pokemon.current_hp = 0
             pokemon.status = StatusType.FAINTED
@@ -1240,7 +1263,7 @@ def _execute_with_counter(state: BattleState, team: str, action: Action,
             missing = actual_cost - current.energy
             hp_cost = int(current.hp * 0.05 * missing)
             if current.current_hp > hp_cost:
-                current.current_hp -= hp_cost
+                current.current_hp = round(current.current_hp - hp_cost, 2)
                 current.energy = 0  # 消耗所有当前能量 + HP补差
             else:
                 # HP不够，回到正常聚能逻辑
@@ -1597,7 +1620,7 @@ def _apply_damage_to_enemy(state, enemy, damage: int, attacker=None, skill=None)
             if skill is not None and getattr(skill, "_last_actual_cost", skill.energy_cost) <= threshold:
                 damage = 0
         if damage > 0:
-            enemy.current_hp -= damage
+            enemy.current_hp = round(enemy.current_hp - damage, 2)
             if enemy.current_hp <= 0:
                 enemy.current_hp = 0
                 enemy.status = StatusType.FAINTED
@@ -1844,115 +1867,3 @@ def check_winner(state: BattleState) -> Optional[str]:
         return "a"
     return None
 
-
-# ============================================================
-# 队伍构建 - 从精灵数据库+技能数据库自动获取属性
-# ============================================================
-class TeamBuilder:
-
-    TYPE_MAP = {
-        "普通": Type.NORMAL, "火": Type.FIRE, "水": Type.WATER, "草": Type.GRASS,
-        "电": Type.ELECTRIC, "冰": Type.ICE, "格斗": Type.FIGHTING, "毒": Type.POISON,
-        "地面": Type.GROUND, "飞行": Type.FLYING, "超能": Type.PSYCHIC, "虫": Type.BUG,
-        "幽灵": Type.GHOST, "龙": Type.DRAGON, "恶": Type.DARK,
-        "钢": Type.STEEL, "妖精": Type.FAIRY, "机械": Type.STEEL, "萌": Type.FAIRY,
-        "翼": Type.FLYING, "武": Type.FIGHTING, "幽": Type.GHOST, "幻": Type.PSYCHIC,
-        "光": Type.LIGHT,
-    }
-
-    @staticmethod
-    def _p(name: str, skill_names: list) -> Pokemon:
-        """根据精灵名称从数据库获取六维数据，构造Pokemon对象"""
-        from src.pokemon_db import get_pokemon
-        from src.skill_db import load_ability_effects
-
-        data = get_pokemon(name)
-        if data:
-            ptype_str = data["属性"]
-            ability = data["特性"]
-            hp = int(data["生命值"])
-            atk = int(data["物攻"])
-            dfn = int(data["物防"])
-            spatk = int(data["魔攻"])
-            spdef = int(data["魔防"])
-            spd = int(data["速度"])
-        else:
-            print(f"[WARN] 精灵 '{name}' 未在数据库中找到，使用默认属性")
-            ptype_str = "普通"
-            ability = "未知"
-            hp, atk, dfn, spatk, spdef, spd = 500, 350, 350, 350, 350, 350
-
-        type_enum = TeamBuilder.TYPE_MAP.get(ptype_str, Type.NORMAL)
-        skills = [get_skill(n) for n in skill_names]
-
-        # 加载特性效果
-        ability_effects = load_ability_effects(ability) if ability else []
-
-        p = Pokemon(name=name, pokemon_type=type_enum,
-                    hp=hp, attack=atk, defense=dfn,
-                    sp_attack=spatk, sp_defense=spdef,
-                    speed=spd, ability=ability, skills=skills)
-        p.ability_effects = ability_effects
-        # 初始化被动标记（PASSIVE 特性需要在加载时就设置，确保立即生效）
-        for ae in ability_effects:
-            for tag in ae.effects:
-                if tag.type == E.COST_INVERT:
-                    p.ability_state["cost_invert"] = True
-                elif tag.type == E.IMMUNE_ZERO_ENERGY_ATTACKER:
-                    p.ability_state["immune_zero_energy_attacker"] = True
-                elif tag.type == E.IMMUNE_LOW_COST_ATTACK:
-                    p.ability_state["immune_low_cost_attack"] = tag.params.get("cost_threshold", 1)
-                elif tag.type == E.FIXED_HIT_COUNT_ALL:
-                    p.ability_state["fixed_hit_count_all"] = tag.params.get("count", 2)
-                elif tag.type == E.HIT_COUNT_PER_POISON:
-                    p.ability_state["hit_count_per_poison"] = True
-                elif tag.type == E.FAINT_NO_MP_LOSS:
-                    p.ability_state["faint_no_mp_loss"] = True
-                elif tag.type == E.EXTRA_POISON_TICK:
-                    p.ability_state["extra_poison_tick"] = True
-                elif tag.type == E.HEAL_PER_TURN:
-                    p.ability_state["heal_per_turn_pct"] = tag.params.get("heal_pct", 0.12)
-                elif tag.type == E.SHARE_GAINS:
-                    p.ability_state["share_gains"] = True
-                elif tag.type == E.HALF_METEOR_FULL_DAMAGE:
-                    p.ability_state["half_meteor_full_damage"] = True
-                elif tag.type == E.CHARGE_FREE_SKILL:
-                    p.ability_state["charge_free_skill"] = True
-                elif tag.type == E.COST_CHANGE_DOUBLE:
-                    p.ability_state["cost_change_double"] = True
-                elif tag.type == E.TURN_END_REPEAT:
-                    delta = tag.params.get("delta", 1)
-                    p.ability_state["turn_end_repeat"] = p.ability_state.get("turn_end_repeat", 0) + delta
-                elif tag.type == E.TURN_END_SKIP:
-                    delta = tag.params.get("delta", 1)
-                    p.ability_state["turn_end_skip"] = p.ability_state.get("turn_end_skip", 0) + delta
-                elif tag.type == E.BUFF_EXTRA_LAYERS:
-                    p.ability_state["buff_extra_layers"] = tag.params.get("extra", 2)
-                # ── 萌化被动 ──
-                elif tag.type == E.CUTE_NO_CAP:
-                    p.ability_state["cute_no_cap"] = True
-                elif tag.type == E.CUTE_HIT_PER_STACK:
-                    p.ability_state["cute_hit_per_stack"] = tag.params.get("per", 2)
-        return p
-
-    @staticmethod
-    def create_toxic_team() -> List[Pokemon]:
-        return [
-            TeamBuilder._p("千棘盔", ["毒雾", "泡沫幻影", "疫病吐息", "打湿"]),
-            TeamBuilder._p("影狸", ["嘲弄", "恶意逃离", "毒液渗透", "感染病"]),
-            TeamBuilder._p("裘卡", ["阻断", "崩拳", "毒囊", "防御"]),
-            TeamBuilder._p("琉璃水母", ["甩水", "天洪", "泡沫幻影", "以毒攻毒"]),
-            TeamBuilder._p("迷迷箱怪", ["风墙", "啮合传递", "双星", "偷袭"]),
-            TeamBuilder._p("海豹船长", ["力量增效", "水刃", "斩断", "听桥"]),
-        ]
-
-    @staticmethod
-    def create_wing_team() -> List[Pokemon]:
-        return [
-            TeamBuilder._p("燃薪虫", ["火焰护盾", "引燃", "倾泻", "抽枝"]),
-            TeamBuilder._p("圣羽翼王", ["水刃", "力量增效", "疾风连袭", "扇风"]),
-            TeamBuilder._p("翠顶夫人", ["力量增效", "水刃", "水环", "泡沫幻影"]),
-            TeamBuilder._p("迷迷箱怪", ["双星", "啮合传递", "偷袭", "吓退"]),
-            TeamBuilder._p("秩序鱿墨", ["风墙", "能量刃", "力量增效", "倾泻"]),
-            TeamBuilder._p("声波缇塔", ["轴承支撑", "齿轮扭矩", "地刺", "啮合传递"]),
-        ]

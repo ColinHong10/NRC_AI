@@ -9,8 +9,9 @@ from collections import Counter, defaultdict
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.skill_db import load_skills, get_skill
 from src.models import BattleState
+from src.team_builder import TeamBuilder
 from src.battle import (
-    TeamBuilder, execute_full_turn, check_winner,
+    execute_full_turn, check_winner,
     auto_switch, get_actions
 )
 from src.mcts import MCTS, EXPERIENCE_A, EXPERIENCE_B
