@@ -6,6 +6,24 @@
 
 ## 快速开始
 
+### 方式一：Docker 部署（推荐）
+
+```bash
+# 构建并启动容器
+docker-compose up -d
+
+# 访问 http://localhost:8765/team （阵容编辑）
+# 访问 http://localhost:8765/battle（战斗界面）
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
+```
+
+### 方式二：本地运行
+
 ```bash
 pip install fastapi uvicorn[standard] openpyxl pandas beautifulsoup4 requests
 
