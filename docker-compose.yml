@@ -1,0 +1,19 @@
+services:
+  nrc-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nrc-ai-simulator
+    ports:
+      - "8765:8765"
+    volumes:
+      # 挂载数据库目录，支持数据持久化
+      - ./data:/app/data
+      # 可选：挂载源代码以支持开发模式（取消注释以启用）
+      # - ./src:/app/src
+      # - ./web:/app/web
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
