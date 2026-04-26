@@ -67,9 +67,50 @@ NRC_AI/
 │   ├── COVERAGE_MATRIX.md          # 特性覆盖矩阵
 │   └── SKILLS_ABILITIES_CONFIG_GUIDE.md  # 配置开发手册
 │
+├── Dockerfile                      # Docker 镜像构建文件
+├── docker-compose.yml              # Docker Compose 配置
 ├── ROADMAP.md                      # 项目路线图与进度
 └── requirements.txt
 ```
+
+---
+
+## Docker 部署说明
+
+### 基础使用
+
+```bash
+# 构建并启动服务
+docker-compose up -d
+
+# 查看容器状态
+docker-compose ps
+
+# 查看实时日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
+
+# 重新构建镜像（代码更新后）
+docker-compose up -d --build
+```
+
+### 开发模式
+
+如需实时修改代码并在容器中生效，可取消 `docker-compose.yml` 中 volumes 的注释：
+
+```yaml
+volumes:
+  - ./data:/app/data
+  - ./src:/app/src      # 取消注释
+  - ./web:/app/web      # 取消注释
+```
+
+### 环境要求
+
+- Docker 20.10+
+- Docker Compose v2+
 
 ---
 
