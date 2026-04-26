@@ -34,7 +34,6 @@ Thumbs.db
 *.md
 !README.md
 docs/
-ROADMAP.md
 
 # CI/CD
 .github

@@ -25,4 +25,6 @@ EXPOSE 8765
 ENV PYTHONUNBUFFERED=1
 
 # 启动 Web 服务
+# run_web.py 启动 FastAPI 服务器，监听 0.0.0.0:8765
+# 提供 Web 图形界面和 WebSocket API
 CMD ["python", "run_web.py"]
